@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capture Delivery"
+  short_description: "Turn work context into privacy-aware STAR drafts"
+  default_prompt: "Use $capture-delivery to turn this thread into a concise STAR delivery draft."

@@ -1,0 +1,35 @@
+{
+  "name": "career-dev-toolkit",
+  "description": "Turn engineering work into privacy-aware STAR evidence for brag documents and performance reviews.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Gabriel Dantas",
+    "url": "https://gdantas.com.br"
+  },
+  "homepage": "https://github.com/gabriel-dantas98/career-dev-toolkit",
+  "repository": "https://github.com/gabriel-dantas98/career-dev-toolkit",
+  "keywords": [
+    "career",
+    "brag-document",
+    "performance-review",
+    "star",
+    "privacy",
+    "agent-skills"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Career Dev Toolkit",
+    "shortDescription": "Turn work context into STAR career evidence",
+    "longDescription": "Capture privacy-aware career evidence from the work context already available in your agent thread.",
+    "developerName": "Gabriel Dantas",
+    "category": "Productivity",
+    "capabilities": [
+      "Read"
+    ],
+    "websiteURL": "https://github.com/gabriel-dantas98/career-dev-toolkit",
+    "defaultPrompt": [
+      "Turn this thread into a STAR delivery draft."
+    ],
+    "brandColor": "#1CB0F6"
+  }
+}

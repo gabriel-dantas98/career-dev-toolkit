@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "career-dev-toolkit",
+  "description": "Privacy-aware career evidence skills for Claude Code.",
+  "owner": {
+    "name": "Gabriel Dantas",
+    "email": "gabsdevops@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "career-dev-toolkit",
+      "source": "./",
+      "description": "Turn current work context into reviewable STAR delivery drafts.",
+      "author": {
+        "name": "Gabriel Dantas",
+        "url": "https://gdantas.com.br"
+      },
+      "category": "productivity",
+      "homepage": "https://github.com/gabriel-dantas98/career-dev-toolkit"
+    }
+  ]
+}

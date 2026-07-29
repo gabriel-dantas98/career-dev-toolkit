@@ -1,0 +1,6 @@
+.DS_Store
+.claude/
+.cursor/
+.codex/
+evals/results/
+tests/evidence/*.local.*

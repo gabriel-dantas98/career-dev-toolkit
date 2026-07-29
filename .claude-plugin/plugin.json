@@ -1,0 +1,19 @@
+{
+  "name": "career-dev-toolkit",
+  "description": "Turn engineering work into privacy-aware STAR evidence for brag documents and performance reviews.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Gabriel Dantas",
+    "url": "https://gdantas.com.br"
+  },
+  "homepage": "https://github.com/gabriel-dantas98/career-dev-toolkit",
+  "repository": "https://github.com/gabriel-dantas98/career-dev-toolkit",
+  "keywords": [
+    "career",
+    "brag-document",
+    "performance-review",
+    "star",
+    "privacy",
+    "agent-skills"
+  ]
+}

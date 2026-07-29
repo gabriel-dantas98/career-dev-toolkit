@@ -1,0 +1,18 @@
+{
+  "$schema": "https://cursor.com/schemas/cursor-plugin/marketplace.json",
+  "name": "career-dev-toolkit",
+  "owner": {
+    "name": "Gabriel Dantas",
+    "email": "gabsdevops@gmail.com"
+  },
+  "metadata": {
+    "description": "Privacy-aware career evidence skills for Cursor."
+  },
+  "plugins": [
+    {
+      "name": "career-dev-toolkit",
+      "source": "./",
+      "description": "Turn current work context into reviewable STAR delivery drafts."
+    }
+  ]
+}
