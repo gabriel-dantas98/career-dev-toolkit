@@ -14,7 +14,7 @@ const completeCase = {
     "20 minutes",
     "12 minutes",
     "six engineers",
-    "no increase in flaky retries",
+    "no increase in flaky-test retries",
   ],
   allowedDerivedMetrics: [
     {
