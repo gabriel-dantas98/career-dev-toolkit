@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "id": "multiple-deliveries",
+  "title": "Two distinct deliveries in one thread",
+  "tags": [
+    "capture-delivery",
+    "multiple-deliveries"
+  ],
+  "inputFile": "input.md",
+  "request": "Review this work thread and capture the evidence that would be useful in a future performance review.",
+  "expectedExecutionStatus": "completed",
+  "expectedDeliveryCount": 2,
+  "allowedFacts": [
+    "18 minutes",
+    "11 minutes",
+    "8 days",
+    "5 days",
+    "three teams"
+  ],
+  "allowedDerivedMetrics": [
+    {
+      "value": "39%",
+      "formula": "percentage-reduction-rounded",
+      "operands": [
+        18,
+        11
+      ]
+    },
+    {
+      "value": "38.9%",
+      "formula": "percentage-reduction-one-decimal",
+      "operands": [
+        18,
+        11
+      ]
+    },
+    {
+      "value": "37.5%",
+      "formula": "percentage-reduction-one-decimal",
+      "operands": [
+        8,
+        5
+      ]
+    }
+  ],
+  "forbiddenClaims": [
+    "single transformation program",
+    "company-wide rollout"
+  ],
+  "criticalCriteria": [
+    "star-structure",
+    "delivery-count",
+    "at-most-one-question",
+    "no-sensitive-output",
+    "no-invented-numeric-claims",
+    "no-forbidden-claims"
+  ],
+  "weightedCriteria": [
+    {
+      "id": "star-structure",
+      "weight": 2
+    },
+    {
+      "id": "separate-deliveries",
+      "weight": 2
+    },
+    {
+      "id": "evidence-preserved",
+      "weight": 2
+    },
+    {
+      "id": "action-attribution",
+      "weight": 1
+    }
+  ]
+}

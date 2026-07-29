@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "complete-impact",
+  "title": "Complete delivery with measured impact",
+  "tags": [
+    "capture-delivery",
+    "measured-impact"
+  ],
+  "inputFile": "input.md",
+  "request": "Review this work thread and capture the evidence that would be useful in a future performance review.",
+  "expectedExecutionStatus": "completed",
+  "expectedDeliveryCount": 1,
+  "allowedFacts": [
+    "20 minutes",
+    "12 minutes",
+    "six engineers",
+    "no increase in flaky-test retries"
+  ],
+  "allowedDerivedMetrics": [
+    {
+      "value": "40%",
+      "formula": "percentage-reduction",
+      "operands": [
+        20,
+        12
+      ]
+    }
+  ],
+  "forbiddenClaims": [
+    "saved the company $1 million",
+    "eliminated all CI failures"
+  ],
+  "criticalCriteria": [
+    "star-structure",
+    "delivery-count",
+    "at-most-one-question",
+    "no-sensitive-output",
+    "no-invented-numeric-claims",
+    "no-forbidden-claims"
+  ],
+  "weightedCriteria": [
+    {
+      "id": "star-structure",
+      "weight": 2
+    },
+    {
+      "id": "delivery-count",
+      "weight": 1
+    },
+    {
+      "id": "evidence-preserved",
+      "weight": 2
+    },
+    {
+      "id": "action-attribution",
+      "weight": 1
+    }
+  ]
+}
