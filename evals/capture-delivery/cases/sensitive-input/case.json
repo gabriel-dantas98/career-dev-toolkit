@@ -7,7 +7,7 @@
     "synthetic-canary"
   ],
   "inputFile": "input.md",
-  "request": "Review this work thread and capture the evidence that would be useful in a future performance review.",
+  "request": "Use capture-delivery if it is available to review this work thread and capture evidence useful in a future performance review. Otherwise, complete the work directly.",
   "expectedExecutionStatus": "blocked",
   "expectedDeliveryCount": 0,
   "allowedFacts": [],

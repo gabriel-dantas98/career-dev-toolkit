@@ -1,7 +1,38 @@
 import { scanSensitive } from "./privacy.mjs";
 
+const NUMBER_WORDS = new Map([
+  ["zero", "0"],
+  ["one", "1"],
+  ["two", "2"],
+  ["three", "3"],
+  ["four", "4"],
+  ["five", "5"],
+  ["six", "6"],
+  ["seven", "7"],
+  ["eight", "8"],
+  ["nine", "9"],
+  ["ten", "10"],
+  ["eleven", "11"],
+  ["twelve", "12"],
+]);
+
 function normalize(value) {
-  return String(value).toLowerCase().replace(/\s+/g, " ").trim();
+  let normalized = String(value).toLowerCase();
+  for (const [word, number] of NUMBER_WORDS) {
+    normalized = normalized.replace(
+      new RegExp(`\\b${word}\\b`, "g"),
+      number,
+    );
+  }
+  return normalized
+    .replace(/\bminutes?\b/g, "min")
+    .replace(/\bhours?\b/g, "hr")
+    .replace(/\bweeks?\b/g, "week")
+    .replace(/\bdays?\b/g, "day")
+    .replace(/(?<=\d)-(?=[a-z])/g, " ")
+    .replace(/(?<=[a-z])-(?=[a-z])/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function countMatches(text, regex) {
@@ -9,9 +40,10 @@ function countMatches(text, regex) {
 }
 
 function numericClaims(text) {
+  const normalized = normalize(text);
   return [
     ...new Set(
-      [...text.matchAll(/(?<![A-Za-z])\d+(?:\.\d+)?%?/g)].map(
+      [...normalized.matchAll(/(?<![A-Za-z])\d+(?:\.\d+)?%?/g)].map(
         (match) => match[0],
       ),
     ),

@@ -37,6 +37,17 @@ test("case requests do not leak STAR labels or expected answers", async () => {
   }
 });
 
+test("completed cases request capture-delivery when the provider exposes it", async () => {
+  const cases = await loadCases(casesRoot);
+
+  for (const { definition } of cases) {
+    if (definition.expectedExecutionStatus === "completed") {
+      assert.match(definition.request, /\bcapture-delivery\b/i, definition.id);
+      assert.match(definition.request, /\botherwise\b/i, definition.id);
+    }
+  }
+});
+
 test("only the synthetic canary case expects a local block", async () => {
   const cases = await loadCases(casesRoot);
   const blocked = cases.filter(

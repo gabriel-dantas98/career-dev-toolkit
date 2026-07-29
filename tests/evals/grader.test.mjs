@@ -14,6 +14,7 @@ const completeCase = {
     "20 minutes",
     "12 minutes",
     "six engineers",
+    "two weeks",
     "no increase in flaky-test retries",
   ],
   allowedDerivedMetrics: [
@@ -146,4 +147,21 @@ test("gradeOutput rejects a missing STAR section", () => {
   );
 
   assert.ok(result.criticalFailures.includes("star-structure"));
+});
+
+test("gradeOutput accepts equivalent number words and time units", () => {
+  const result = gradeOutput(
+    {
+      ...completeCase,
+    },
+    `### Reduced CI feedback time
+- Situation: CI took 20 min for 6 engineers.
+- Task: Improve the feedback loop.
+- Action: I introduced bounded parallel execution.
+- Result: It fell to 12 min over a 2-week window, a 40% reduction, with no increase in flaky-test retries.
+`,
+  );
+
+  assert.equal(result.criteria["no-invented-numeric-claims"], true);
+  assert.equal(result.criteria["evidence-preserved"], true);
 });
