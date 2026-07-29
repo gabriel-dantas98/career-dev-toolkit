@@ -4,6 +4,7 @@ import path from "node:path";
 import { getAdapter as defaultGetAdapter } from "./adapters/index.mjs";
 import { loadCases } from "./cases.mjs";
 import { gradeOutput } from "./grader.mjs";
+import { buildJudgeRequest, parseJudgeResult } from "./judge.mjs";
 import { createAllowedEnv, runProcess as defaultRunProcess } from "./process.mjs";
 import { privacyPreflight, sanitizeText } from "./privacy.mjs";
 
@@ -206,6 +207,83 @@ export async function runSuite(options) {
             stderr: sanitizedStderr,
             truncated: processResult.truncated ?? false,
           });
+        }
+      }
+
+      if (options.judge) {
+        const judgeAdapter = (options.getAdapter ?? defaultGetAdapter)(
+          options.judge,
+        );
+        for (const candidateRun of runs.filter(
+          (run) =>
+            run.arm === "candidate" &&
+            run.executionStatus === "completed",
+        )) {
+          if (invocationState.used >= invocationState.maximum) {
+            invocationState.limitReached = true;
+            candidateRun.judge = {
+              provider: options.judge,
+              executionStatus: "error",
+              reason: "invocation-limit-reached",
+              result: null,
+              warning:
+                options.judge === provider
+                  ? "judge-and-subject-provider-match"
+                  : null,
+            };
+            continue;
+          }
+
+          invocationState.used += 1;
+          const judgePrompt = buildJudgeRequest({
+            caseInput: loadedCase.input,
+            rubric: {
+              forbiddenClaims: loadedCase.definition.forbiddenClaims,
+              criticalCriteria: loadedCase.definition.criticalCriteria,
+              weightedCriteria: loadedCase.definition.weightedCriteria,
+            },
+            candidateOutput: candidateRun.stdout,
+          });
+          const judgeInvocation = judgeAdapter.buildInvocation({
+            arm: "baseline",
+            prompt: judgePrompt,
+            pluginRoot: options.pluginRoot,
+            timeoutMs: options.timeoutMs ?? 180_000,
+            maxOutputBytes: options.maxOutputBytes ?? 100_000,
+          });
+          judgeInvocation.env = createAllowedEnv(process.env, {
+            NO_COLOR: "1",
+            ...(judgeInvocation.env ?? {}),
+          });
+          const judgeProcess = await (
+            options.runProcess ?? defaultRunProcess
+          )(judgeInvocation);
+          const judgeClassification = judgeAdapter.classifyExit(judgeProcess);
+          const judgeOutput = sanitizeText(judgeProcess.stdout ?? "", {
+            repoRoot: options.pluginRoot,
+            userHome: process.env.HOME,
+          }).text;
+          let judgeResult = null;
+          let judgeReason = judgeClassification.reason;
+          let judgeStatus = judgeClassification.status;
+          if (judgeClassification.status === "completed") {
+            try {
+              judgeResult = parseJudgeResult(judgeOutput);
+            } catch {
+              judgeStatus = "error";
+              judgeReason = "malformed-judge-output";
+            }
+          }
+          candidateRun.judge = {
+            provider: options.judge,
+            executionStatus: judgeStatus,
+            reason: judgeReason,
+            result: judgeResult,
+            warning:
+              options.judge === provider
+                ? "judge-and-subject-provider-match"
+                : null,
+          };
         }
       }
 

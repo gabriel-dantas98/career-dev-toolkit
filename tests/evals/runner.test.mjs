@@ -172,3 +172,46 @@ test("summarizeProvider requires two passing candidate runs out of three", () =>
   assert.equal(summary.stable, true);
   assert.equal(summary.certificationStatus, "healthy");
 });
+
+test("runSuite attaches an advisory judge result within the same ceiling", async () => {
+  let calls = 0;
+  const result = await runSuite({
+    mode: "providers",
+    suiteRoot,
+    pluginRoot,
+    providers: ["fake"],
+    judge: "fake",
+    runs: 1,
+    maxInvocations: 3,
+    caseFilter: "complete-impact",
+    getAdapter: () => fakeAdapter(),
+    runProcess: async () => {
+      calls += 1;
+      return {
+        status: "completed",
+        exitCode: 0,
+        stdout:
+          calls === 3
+            ? JSON.stringify({
+                supportedOwnership: true,
+                supportedCausality: true,
+                unsupportedClaims: [],
+                score: 0.95,
+                reason: "Claims are supported.",
+              })
+            : passingOutput,
+        stderr: "",
+        truncated: false,
+        workspace: `/tmp/fresh-${calls}`,
+      };
+    },
+  });
+
+  const candidate = result.cases[0].providerResults[0].runs.find(
+    (run) => run.arm === "candidate",
+  );
+  assert.equal(calls, 3);
+  assert.equal(result.invocations.used, 3);
+  assert.equal(candidate.judge.result.score, 0.95);
+  assert.equal(candidate.judge.warning, "judge-and-subject-provider-match");
+});

@@ -30,6 +30,23 @@ export function renderMarkdown(result) {
         lines.push(
           `- ${run.arm} ${run.run}: ${run.executionStatus}${run.reason ? ` (${run.reason})` : ""}`,
         );
+        if (run.judge) {
+          lines.push(
+            `  - judge ${run.judge.provider}: ${run.judge.executionStatus}`,
+          );
+          if (run.judge.warning) {
+            lines.push(`    warning: ${run.judge.warning}`);
+          }
+          if (run.judge.result) {
+            lines.push(
+              `    score: ${run.judge.result.score}`,
+              `    reason: ${run.judge.result.reason}`,
+            );
+            for (const claim of run.judge.result.unsupportedClaims) {
+              lines.push(`    unsupported: ${claim}`);
+            }
+          }
+        }
       }
     }
     lines.push("");

@@ -32,6 +32,23 @@ const result = {
               executionStatus: "skipped",
               reason: "authentication-unavailable",
             },
+            {
+              arm: "candidate",
+              run: 1,
+              executionStatus: "completed",
+              judge: {
+                provider: "claude",
+                executionStatus: "completed",
+                warning: null,
+                result: {
+                  supportedOwnership: false,
+                  supportedCausality: true,
+                  unsupportedClaims: ["Owned the entire program"],
+                  score: 0.5,
+                  reason: "Ownership is overstated.",
+                },
+              },
+            },
           ],
         },
       ],
@@ -57,4 +74,12 @@ test("writeReport writes normalized JSON, Markdown and sanitized artifacts", asy
     await readFile(path.join(output, "result.json"), "utf8"),
   );
   assert.equal(persisted.runId, "run-test");
+});
+
+test("renderMarkdown reports judge disagreement without averaging it", () => {
+  const markdown = renderMarkdown(result);
+
+  assert.match(markdown, /judge claude: completed/i);
+  assert.match(markdown, /Ownership is overstated/);
+  assert.match(markdown, /Owned the entire program/);
 });
