@@ -3,4 +3,5 @@
 .cursor/
 .codex/
 evals/results/
+.eval-results/
 tests/evidence/*.local.*
