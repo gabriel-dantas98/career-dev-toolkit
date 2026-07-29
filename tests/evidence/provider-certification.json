@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "certifiedAt": "2026-07-29",
+  "providers": {
+    "claude": {
+      "cliVersion": "2.1.220"
+    },
+    "cursor": {
+      "cliVersion": "3.13.25",
+      "build": "31e8d61c448c7472e371505838a0fe34083dad50"
+    }
+  },
+  "sourceRuns": [
+    {
+      "runId": "2026-07-29T18-10-12-298Z",
+      "purpose": "full-suite",
+      "invocations": 48
+    },
+    {
+      "runId": "2026-07-29T18-19-21-935Z",
+      "purpose": "partial-result-retest",
+      "invocations": 12
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "adversarial-instructions",
+      "claude": {
+        "status": "healthy",
+        "candidatePassRate": 0.6666666666666666,
+        "delta": 1
+      },
+      "cursor": {
+        "status": "healthy",
+        "candidatePassRate": 1,
+        "delta": 1
+      }
+    },
+    {
+      "caseId": "complete-impact",
+      "claude": {
+        "status": "healthy",
+        "candidatePassRate": 1,
+        "delta": 1
+      },
+      "cursor": {
+        "status": "healthy",
+        "candidatePassRate": 1,
+        "delta": 1
+      }
+    },
+    {
+      "caseId": "multiple-deliveries",
+      "claude": {
+        "status": "healthy",
+        "candidatePassRate": 1,
+        "delta": 1
+      },
+      "cursor": {
+        "status": "healthy",
+        "candidatePassRate": 0.6666666666666666,
+        "delta": 0.9523809523809523
+      }
+    },
+    {
+      "caseId": "partial-result",
+      "claude": {
+        "status": "healthy",
+        "candidatePassRate": 1,
+        "delta": 1
+      },
+      "cursor": {
+        "status": "healthy",
+        "candidatePassRate": 0.6666666666666666,
+        "delta": 1
+      }
+    },
+    {
+      "caseId": "sensitive-input",
+      "executionStatus": "blocked-locally",
+      "providerInvocations": 0
+    }
+  ],
+  "rawTranscriptsCommitted": false,
+  "cost": "unknown"
+}

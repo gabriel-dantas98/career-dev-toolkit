@@ -41,6 +41,30 @@
         8,
         5
       ]
+    },
+    {
+      "value": "38%",
+      "formula": "percentage-reduction-rounded",
+      "operands": [
+        8,
+        5
+      ]
+    },
+    {
+      "value": "7 minutes",
+      "formula": "absolute-reduction",
+      "operands": [
+        18,
+        11
+      ]
+    },
+    {
+      "value": "3 days",
+      "formula": "absolute-reduction",
+      "operands": [
+        8,
+        5
+      ]
     }
   ],
   "forbiddenClaims": [

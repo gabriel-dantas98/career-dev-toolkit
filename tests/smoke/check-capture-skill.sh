@@ -24,6 +24,7 @@ else
     "draft"
     "privacy"
     "do not invent"
+    'start it with the exact text `Evidence gap:`'
   )
 
   for phrase in "${required_phrases[@]}"; do

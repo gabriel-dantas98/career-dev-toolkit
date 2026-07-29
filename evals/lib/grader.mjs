@@ -39,8 +39,19 @@ function countMatches(text, regex) {
   return [...text.matchAll(regex)].length;
 }
 
+function draftClaimText(output) {
+  return String(output)
+    .split(/\r?\n/)
+    .filter((line) =>
+      /^(?:###\s+|-\s*(?:\*\*)?(?:Situation|Task|Action|Result|Evidence|Confidence)\b)/i.test(
+        line.trim(),
+      ),
+    )
+    .join("\n");
+}
+
 function numericClaims(text) {
-  const raw = String(text).toLowerCase();
+  const raw = String(text).toLowerCase().replace(/\(\d+\)/g, "");
   const claims = new Set(
     [...raw.matchAll(/(?<![A-Za-z])\d+(?:\.\d+)?%?/g)].map(
       (match) => match[0],
@@ -71,7 +82,8 @@ function allowedNumbers(definition) {
 }
 
 function evaluateCriteria(definition, output) {
-  const normalized = normalize(output);
+  const claimText = draftClaimText(output);
+  const normalizedClaims = normalize(claimText);
   const deliveryCount = countMatches(output, /^###\s+.+$/gm);
   const starFields = Object.fromEntries(
     ["situation", "task", "action", "result"].map((field) => [
@@ -86,14 +98,14 @@ function evaluateCriteria(definition, output) {
     ]),
   );
   const allowed = allowedNumbers(definition);
-  const unapprovedNumbers = numericClaims(output).filter(
+  const unapprovedNumbers = numericClaims(claimText).filter(
     (claim) => !allowed.has(claim),
   );
   const forbiddenClaims = (definition.forbiddenClaims ?? []).filter((claim) =>
-    normalized.includes(normalize(claim)),
+    normalizedClaims.includes(normalize(claim)),
   );
   const evidencePreserved = (definition.allowedFacts ?? []).every((fact) =>
-    normalized.includes(normalize(fact)),
+    normalizedClaims.includes(normalize(fact)),
   );
   const expectedCount = definition.expectedDeliveryCount ?? 0;
 

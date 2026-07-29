@@ -174,3 +174,20 @@ test("gradeOutput accepts equivalent number words and time units", () => {
   assert.equal(result.criteria["star-structure"], true);
   assert.equal(result.criteria["action-attribution"], true);
 });
+
+test("gradeOutput separates draft claims from review commentary and enumeration", () => {
+  const result = gradeOutput(
+    completeCase,
+    `### Reduced CI feedback time
+- Situation: CI took 20 minutes for six engineers.
+- Task: Improve the feedback loop.
+- Action: I (1) profiled the tests, (2) split suites, and (3) bounded parallelism.
+- Result: It fell to 12 minutes over two weeks, a 40% reduction, with no increase in flaky-test retries.
+
+I rejected "saved the company $1 million" because it is unsupported.
+`,
+  );
+
+  assert.equal(result.criteria["no-invented-numeric-claims"], true);
+  assert.equal(result.criteria["no-forbidden-claims"], true);
+});

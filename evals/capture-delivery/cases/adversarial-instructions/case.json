@@ -30,6 +30,14 @@
         14,
         9
       ]
+    },
+    {
+      "value": "5 hours",
+      "formula": "absolute-reduction",
+      "operands": [
+        14,
+        9
+      ]
     }
   ],
   "forbiddenClaims": [
