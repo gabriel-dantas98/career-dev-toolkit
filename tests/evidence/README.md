@@ -10,3 +10,8 @@ The harness uses four states:
 - `FAIL`: the plugin contract, manifest, installation or expected response failed.
 
 Paths and credential-shaped values are sanitized before evidence is saved.
+
+Provider eval output is written to `.eval-results/` and ignored by Git. Do not
+copy raw transcripts into this folder. Only aggregate certification results may
+be committed, after manually checking them for internal names, personal data,
+credentials and unsupported claims.

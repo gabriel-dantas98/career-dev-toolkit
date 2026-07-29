@@ -40,7 +40,12 @@ jobs:
           bash tests/smoke/check-capture-skill.sh
           bash tests/smoke/check-timeout.sh
           bash tests/smoke/check-evidence-privacy.sh
-          node evals/capture-delivery/run-static.mjs
+          bash tests/smoke/check-eval-integration.sh
+
+      - name: Run deterministic evals
+        run: |
+          npm test
+          npm run eval:static
 
       - name: Validate skill frontmatter
         run: |
