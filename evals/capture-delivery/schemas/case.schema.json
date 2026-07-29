@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gabriel-dantas98/career-dev-toolkit/evals/case.schema.json",
+  "title": "Career Dev Toolkit evaluation case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "tags",
+    "inputFile",
+    "request",
+    "expectedExecutionStatus",
+    "expectedDeliveryCount",
+    "allowedFacts",
+    "allowedDerivedMetrics",
+    "forbiddenClaims",
+    "criticalCriteria",
+    "weightedCriteria"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "inputFile": {
+      "type": "string",
+      "pattern": "^[^/\\\\].*"
+    },
+    "request": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expectedExecutionStatus": {
+      "enum": [
+        "completed",
+        "blocked"
+      ]
+    },
+    "expectedDeliveryCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "allowedFacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowedDerivedMetrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value",
+          "formula",
+          "operands"
+        ],
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "formula": {
+            "type": "string"
+          },
+          "operands": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2
+          }
+        }
+      }
+    },
+    "forbiddenClaims": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "criticalCriteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "weightedCriteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "weight"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        }
+      }
+    }
+  }
+}

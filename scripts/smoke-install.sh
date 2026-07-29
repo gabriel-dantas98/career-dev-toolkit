@@ -62,6 +62,9 @@ run_structure() {
     "bash tests/smoke/check-capture-skill.sh"
     "bash tests/smoke/check-timeout.sh"
     "bash tests/smoke/check-evidence-privacy.sh"
+    "bash tests/smoke/check-eval-integration.sh"
+    "npm test"
+    "npm run eval:static"
   )
 
   local command

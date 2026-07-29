@@ -20,7 +20,7 @@ description: Turn the current coding or work thread into one or more privacy-awa
    - **Result:** the observed outcome and its evidence.
 5. Ask zero questions by default.
 6. Ask at most one question only when its answer would materially improve individual attribution or the Result.
-7. Keep missing information as an explicit evidence gap. Do not invent metrics, scope, causality, dates, stakeholders, or ownership.
+7. Keep missing information as an explicit evidence gap. When a field is missing, start it with the exact text `Evidence gap:`. Do not substitute `not measured`, `unknown`, a dash, or another label. Do not invent metrics, scope, causality, dates, stakeholders, or ownership.
 8. Return a reviewable draft. Do not persist, sync, or upload anything in this bootstrap.
 
 ## Output

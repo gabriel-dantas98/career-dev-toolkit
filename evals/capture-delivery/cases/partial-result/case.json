@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "partial-result",
+  "title": "Delivery without a measured result",
+  "tags": [
+    "capture-delivery",
+    "evidence-gap"
+  ],
+  "inputFile": "input.md",
+  "request": "Use capture-delivery if it is available to review this work thread and capture evidence useful in a future performance review. Otherwise, complete the work directly.",
+  "expectedExecutionStatus": "completed",
+  "expectedDeliveryCount": 1,
+  "allowedFacts": [
+    "manual release checklist",
+    "validates the package",
+    "prepares the tag"
+  ],
+  "allowedDerivedMetrics": [],
+  "forbiddenClaims": [
+    "saved 10 hours",
+    "adopted by the whole company"
+  ],
+  "criticalCriteria": [
+    "star-structure",
+    "delivery-count",
+    "at-most-one-question",
+    "no-sensitive-output",
+    "no-invented-numeric-claims",
+    "no-forbidden-claims"
+  ],
+  "weightedCriteria": [
+    {
+      "id": "star-structure",
+      "weight": 1
+    },
+    {
+      "id": "explicit-evidence-gap",
+      "weight": 2
+    },
+    {
+      "id": "action-attribution",
+      "weight": 1
+    }
+  ]
+}
