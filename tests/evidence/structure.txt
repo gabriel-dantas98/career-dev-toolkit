@@ -1,0 +1,12 @@
+$ bash tests/smoke/validate-structure.sh
+PASS: plugin structure is valid.
+$ bash tests/smoke/check-capture-skill.sh
+PASS: capture-delivery contract is valid.
+$ bash tests/smoke/check-timeout.sh
+Command timed out after 1 seconds.
+PASS: command timeout is bounded.
+$ bash tests/smoke/check-evidence-privacy.sh
+PASS: evidence contains no user path or credential-shaped value.
+$ official skill and plugin validators
+Skill is valid!
+Plugin validation passed: <repo>

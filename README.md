@@ -73,6 +73,9 @@ Run the deterministic checks:
 ```bash
 bash tests/smoke/validate-structure.sh
 bash tests/smoke/check-capture-skill.sh
+bash tests/smoke/check-timeout.sh
+bash tests/smoke/check-evidence-privacy.sh
+node evals/capture-delivery/run-static.mjs
 python3 /path/to/plugin-creator/scripts/validate_plugin.py .
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/capture-delivery
 ```
@@ -83,7 +86,7 @@ Run the local CLI matrix:
 bash scripts/smoke-install.sh all
 ```
 
-Claude Code also exposes native plugin evals. The repository keeps a case under `evals/capture-delivery`; execution may require early-access enablement and authenticated model access.
+Claude Code also exposes native plugin evals. The repository keeps a case under `evals/capture-delivery`; execution currently requires early-access enablement and authenticated model access. The latest blocked diagnostic is recorded separately from the passing static eval.
 
 ## Roadmap
 

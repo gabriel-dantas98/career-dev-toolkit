@@ -1,0 +1,62 @@
+name: smoke-test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic:
+    name: deterministic plugin checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate JSON manifests
+        run: |
+          node -e 'for (const file of process.argv.slice(1)) JSON.parse(require("node:fs").readFileSync(file, "utf8"))' \
+            .claude-plugin/plugin.json \
+            .claude-plugin/marketplace.json \
+            .cursor-plugin/plugin.json \
+            .cursor-plugin/marketplace.json \
+            .codex-plugin/plugin.json
+
+      - name: Run structural contracts
+        run: |
+          bash tests/smoke/validate-structure.sh
+          bash tests/smoke/check-capture-skill.sh
+          bash tests/smoke/check-timeout.sh
+          bash tests/smoke/check-evidence-privacy.sh
+          node evals/capture-delivery/run-static.mjs
+
+      - name: Validate skill frontmatter
+        run: |
+          head -1 skills/capture-delivery/SKILL.md | grep -q '^---$'
+          grep -q '^name: capture-delivery$' skills/capture-delivery/SKILL.md
+          grep -q '^description:' skills/capture-delivery/SKILL.md
+
+  claude-manifest:
+    name: Claude plugin validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@latest
+      - name: Validate plugin
+        run: claude plugin validate . --strict

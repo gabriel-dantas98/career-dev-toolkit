@@ -1,0 +1,22 @@
+{
+  "complete-thread.md": {
+    "status": "complete",
+    "requiredEvidence": [
+      "20 minutes",
+      "12 minutes",
+      "six engineers",
+      "no increase in flaky-test retries"
+    ]
+  },
+  "partial-thread.md": {
+    "status": "partial",
+    "requiredEvidence": [
+      "does not include adoption data or a measured result"
+    ]
+  },
+  "sensitive-thread.md": {
+    "status": "blocked",
+    "category": "credential",
+    "safeOutput": "Capture blocked: credential-shaped value detected. Remove or replace it before continuing."
+  }
+}

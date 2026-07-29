@@ -1,0 +1,3 @@
+Validating marketplace manifest: <repo>/.claude-plugin/marketplace.json
+
+✔ Validation passed

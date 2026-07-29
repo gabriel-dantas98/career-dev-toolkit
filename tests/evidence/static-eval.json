@@ -1,0 +1,83 @@
+{
+  "suite": "capture-delivery-static",
+  "status": "pass",
+  "passed": 15,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "skill:Situation",
+      "status": "pass",
+      "detail": "Skill contract contains \"Situation\"."
+    },
+    {
+      "name": "skill:Task",
+      "status": "pass",
+      "detail": "Skill contract contains \"Task\"."
+    },
+    {
+      "name": "skill:Action",
+      "status": "pass",
+      "detail": "Skill contract contains \"Action\"."
+    },
+    {
+      "name": "skill:Result",
+      "status": "pass",
+      "detail": "Skill contract contains \"Result\"."
+    },
+    {
+      "name": "skill:Ask zero questions by default",
+      "status": "pass",
+      "detail": "Skill contract contains \"Ask zero questions by default\"."
+    },
+    {
+      "name": "skill:Ask at most one question",
+      "status": "pass",
+      "detail": "Skill contract contains \"Ask at most one question\"."
+    },
+    {
+      "name": "skill:Do not invent",
+      "status": "pass",
+      "detail": "Skill contract contains \"Do not invent\"."
+    },
+    {
+      "name": "complete-thread.md:evidence:20 minutes",
+      "status": "pass",
+      "detail": "Required synthetic evidence remains present in the fixture."
+    },
+    {
+      "name": "complete-thread.md:evidence:12 minutes",
+      "status": "pass",
+      "detail": "Required synthetic evidence remains present in the fixture."
+    },
+    {
+      "name": "complete-thread.md:evidence:six engineers",
+      "status": "pass",
+      "detail": "Required synthetic evidence remains present in the fixture."
+    },
+    {
+      "name": "complete-thread.md:evidence:no increase in flaky-test retries",
+      "status": "pass",
+      "detail": "Required synthetic evidence remains present in the fixture."
+    },
+    {
+      "name": "partial-thread.md:evidence:does not include adoption data or a measured result",
+      "status": "pass",
+      "detail": "Required synthetic evidence remains present in the fixture."
+    },
+    {
+      "name": "sensitive-thread.md:canary-detected",
+      "status": "pass",
+      "detail": "Credential-shaped canary is detected."
+    },
+    {
+      "name": "sensitive-thread.md:canary-not-reproduced",
+      "status": "pass",
+      "detail": "Expected output names the category without reproducing the value."
+    },
+    {
+      "name": "sensitive-thread.md:blocked",
+      "status": "pass",
+      "detail": "Sensitive fixture fails closed."
+    }
+  ]
+}

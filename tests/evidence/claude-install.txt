@@ -1,0 +1,22 @@
+Adding marketplace…✔ Marketplace 'career-dev-toolkit' already on disk — declared in user settings
+Installing plugin "career-dev-toolkit@career-dev-toolkit"...✔ Plugin "career-dev-toolkit@career-dev-toolkit" is already installed (scope: user)
+career-dev-toolkit 0.1.0
+  Turn engineering work into privacy-aware STAR evidence for brag documents and performance reviews.
+  Source: career-dev-toolkit@career-dev-toolkit
+
+Component inventory
+  Skills (1)  capture-delivery
+  Agents (0)
+  Hooks (0)
+  MCP servers (0)
+  LSP servers (0)
+
+Projected token cost
+  Always-on:   ~93 tok   added to every session
+
+Per-component (rounded)
+  component         always-on  on-invoke
+  capture-delivery        ~90       ~600
+
+  On-invoke cost is paid each time a skill or agent fires.
+  Token counts are estimates and may differ from actual usage.

@@ -1,0 +1,9 @@
+{
+  "suite": "capture-delivery",
+  "status": "blocked",
+  "runner": "claude plugin eval",
+  "exitCode": 1,
+  "reason": "The installed Claude Code CLI reports that plugin eval is currently in early access.",
+  "runs": 0,
+  "costUsd": 0
+}
