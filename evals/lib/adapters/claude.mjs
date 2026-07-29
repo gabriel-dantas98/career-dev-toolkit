@@ -6,9 +6,9 @@ const commonArgs = [
   "--setting-sources",
   "project,local",
   "--tools",
-  "",
+  "Skill",
   "--permission-mode",
-  "plan",
+  "dontAsk",
 ];
 
 export const claudeAdapter = {

@@ -20,6 +20,20 @@ test("Claude baseline excludes user settings and candidate adds only the plugin 
   assert.equal(baseline.shell, false);
   assert.ok(baseline.args.includes("--setting-sources"));
   assert.ok(baseline.args.includes("project,local"));
+  assert.deepEqual(
+    baseline.args.slice(
+      baseline.args.indexOf("--tools"),
+      baseline.args.indexOf("--tools") + 2,
+    ),
+    ["--tools", "Skill"],
+  );
+  assert.deepEqual(
+    baseline.args.slice(
+      baseline.args.indexOf("--permission-mode"),
+      baseline.args.indexOf("--permission-mode") + 2,
+    ),
+    ["--permission-mode", "dontAsk"],
+  );
   assert.equal(baseline.args.includes("--plugin-dir"), false);
   assert.deepEqual(
     candidate.args.slice(

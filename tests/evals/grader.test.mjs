@@ -23,6 +23,11 @@ const completeCase = {
       formula: "percentage-reduction",
       operands: [20, 12],
     },
+    {
+      value: "8 minutes",
+      formula: "absolute-reduction",
+      operands: [20, 12],
+    },
   ],
   forbiddenClaims: ["saved the company $1 million"],
   criticalCriteria: [
@@ -154,14 +159,18 @@ test("gradeOutput accepts equivalent number words and time units", () => {
     {
       ...completeCase,
     },
-    `### Reduced CI feedback time
-- Situation: CI took 20 min for 6 engineers.
-- Task: Improve the feedback loop.
-- Action: I introduced bounded parallel execution.
-- Result: It fell to 12 min over a 2-week window, a 40% reduction, with no increase in flaky-test retries.
+    `One note: this is a synthetic scenario.
+
+### Reduced CI feedback time
+- **Situation:** CI took 20 min for 6 engineers.
+- **Task:** Improve the feedback loop.
+- **Action:** Profiled the tests and introduced bounded parallel execution.
+- **Result:** It fell to 12 min over a 2-week window, saving 8 min per build (40%), with no increase in flaky-test retries.
 `,
   );
 
   assert.equal(result.criteria["no-invented-numeric-claims"], true);
   assert.equal(result.criteria["evidence-preserved"], true);
+  assert.equal(result.criteria["star-structure"], true);
+  assert.equal(result.criteria["action-attribution"], true);
 });

@@ -25,6 +25,14 @@
         20,
         12
       ]
+    },
+    {
+      "value": "8 minutes",
+      "formula": "absolute-reduction",
+      "operands": [
+        20,
+        12
+      ]
     }
   ],
   "forbiddenClaims": [

@@ -40,14 +40,22 @@ function countMatches(text, regex) {
 }
 
 function numericClaims(text) {
-  const normalized = normalize(text);
-  return [
-    ...new Set(
-      [...normalized.matchAll(/(?<![A-Za-z])\d+(?:\.\d+)?%?/g)].map(
-        (match) => match[0],
-      ),
+  const raw = String(text).toLowerCase();
+  const claims = new Set(
+    [...raw.matchAll(/(?<![A-Za-z])\d+(?:\.\d+)?%?/g)].map(
+      (match) => match[0],
     ),
-  ];
+  );
+  const quantifiedNoun =
+    "(?:engineers?|minutes?|hours?|days?|weeks?|months?|users?|people|teams?|services?|incidents?|builds?|tests?|deployments?|pipelines?|percent)";
+
+  for (const [word, number] of NUMBER_WORDS) {
+    if (new RegExp(`\\b${word}\\b(?=\\s+${quantifiedNoun}\\b)`).test(raw)) {
+      claims.add(number);
+    }
+  }
+
+  return [...claims];
 }
 
 function allowedNumbers(definition) {
@@ -68,7 +76,13 @@ function evaluateCriteria(definition, output) {
   const starFields = Object.fromEntries(
     ["situation", "task", "action", "result"].map((field) => [
       field,
-      countMatches(output, new RegExp(`^-\\s*${field}:`, "gim")),
+      countMatches(
+        output,
+        new RegExp(
+          `^-\\s*(?:\\*\\*)?${field}(?:\\*\\*)?:(?:\\*\\*)?`,
+          "gim",
+        ),
+      ),
     ]),
   );
   const allowed = allowedNumbers(definition);
@@ -97,7 +111,10 @@ function evaluateCriteria(definition, output) {
     "separate-deliveries": deliveryCount === expectedCount,
     "action-attribution":
       expectedCount === 0 ||
-      countMatches(output, /^-\s*Action:\s*(?:I\b|The user\b)/gim) >=
+      countMatches(
+        output,
+        /^-\s*(?:\*\*)?Action(?:\*\*)?:(?:\*\*)?\s*(?!(?:We|The team|They)\b)(?:I\b|The user\b|[A-Z][a-z]+)/gm,
+      ) >=
         expectedCount,
   };
 }
