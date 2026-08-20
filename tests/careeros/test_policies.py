@@ -238,8 +238,28 @@ def test_leader_review_linked_excerpt_can_support_impact_claim() -> None:
     }
 
 
+def test_leader_review_numeric_claim_requires_matching_digits_in_excerpt() -> None:
+    record = synthetic_record(
+        result="Improved checkout conversion by 40%.",
+        evidence=(
+            EvidenceRef(
+                locator="https://example.invalid/evidence/checkout",
+                excerpt="Checkout flow was redesigned for clarity.",
+                observed_at="2026-08-20T00:00:00+00:00",
+                connector="thread",
+            ),
+        ),
+    )
+
+    review = leader_review((record,))
+
+    assert [finding.rule_id for finding in review.findings] == [
+        "leader_review.impact.unsupported"
+    ]
+
+
 def test_timeline_parity_compares_complete_apps_script_compatible_preview() -> None:
-    timeline = build_timeline((synthetic_record(),), reference_year=2026)
+    timeline = build_timeline((synthetic_record(),))
     preview = timeline.as_dict()
 
     matching = timeline_parity(timeline, preview)

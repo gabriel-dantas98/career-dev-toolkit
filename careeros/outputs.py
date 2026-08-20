@@ -152,11 +152,7 @@ def build_homepage(
 def build_promo_packet(
     records: Sequence[DeliveryRecord],
     community_records: Sequence[DeliveryRecord] = (),
-    *,
-    reference_year: int | None = None,
 ) -> PromotionPacket:
-    # Retained for call compatibility. Output periods never use a global fallback.
-    del reference_year
     all_records = tuple(records)
     explicit_community = tuple(community_records)
 
@@ -181,12 +177,14 @@ def build_promo_packet(
         resolution = _resolve_record_period(record)
         if resolution.status == "unresolved":
             unresolved.append((record, resolution))
-        elif _evidence_links(record):
+        elif not _evidence_links(record):
+            unresolved.append((record, resolution))
+        else:
             eligible.append((record, resolution))
 
     eligible.sort(key=_promo_sort_key)
     selected = eligible[:MAX_PROMO_WORK_CARDS]
-    cards = tuple(_work_card(record) for record, _resolution in selected)
+    cards = tuple(_work_card(record, resolution) for record, resolution in selected)
     missing = max(0, MIN_PROMO_WORK_CARDS - len(cards))
     status = "ready" if missing == 0 else "insufficient_evidence"
 
@@ -206,20 +204,29 @@ def build_promo_packet(
                     unresolved,
                     key=lambda item: item[0].id,
                 )
-                for gap in (*record.evidence_gaps, *resolution.evidence_gaps)
+                for gap in _unresolved_evidence_gaps(record, resolution)
             ),
         ),
         missing_work_cards=missing,
     )
 
 
+def _unresolved_evidence_gaps(
+    record: DeliveryRecord,
+    resolution: _PeriodResolution,
+) -> tuple[str, ...]:
+    gaps: list[str] = list(record.evidence_gaps)
+    for gap in resolution.evidence_gaps:
+        if gap not in gaps:
+            gaps.append(gap)
+    if not _evidence_links(record) and "evidence.locator.required" not in gaps:
+        gaps.append("evidence.locator.required")
+    return tuple(gaps)
+
+
 def build_timeline(
     records: Sequence[DeliveryRecord],
-    *,
-    reference_year: int | None = None,
 ) -> TimelineContract:
-    # Retained for call compatibility. Output periods never use a global fallback.
-    del reference_year
     normalized = tuple(records)
     cards: list[TimelineCard] = []
     unresolved: list[TimelineUnresolvedRecord] = []
@@ -230,10 +237,7 @@ def build_timeline(
                 TimelineUnresolvedRecord(
                     record_id=record.id,
                     evidence_links=_evidence_links(record),
-                    evidence_gaps=(
-                        *record.evidence_gaps,
-                        *resolution.evidence_gaps,
-                    ),
+                    evidence_gaps=_unresolved_evidence_gaps(record, resolution),
                 )
             )
         else:
@@ -277,11 +281,11 @@ def _timeline_card(
         quarter_badges=resolution.quarter_badges,
         sort_start=resolution.sort_start,
         evidence_links=evidence_links,
-        evidence_gaps=tuple(record.evidence_gaps),
+        evidence_gaps=tuple((*record.evidence_gaps, *resolution.evidence_gaps)),
     )
 
 
-def _work_card(record: DeliveryRecord) -> WorkCard:
+def _work_card(record: DeliveryRecord, resolution: _PeriodResolution) -> WorkCard:
     return WorkCard(
         record_id=record.id,
         title=record.title,
@@ -289,7 +293,7 @@ def _work_card(record: DeliveryRecord) -> WorkCard:
         delivery_types=_delivery_types(record),
         result=record.result,
         evidence_links=_evidence_links(record),
-        evidence_gaps=tuple(record.evidence_gaps),
+        evidence_gaps=tuple((*record.evidence_gaps, *resolution.evidence_gaps)),
     )
 
 
@@ -362,6 +366,7 @@ def _resolve_record_period(record: DeliveryRecord) -> _PeriodResolution:
             evidence_gaps=(),
         )
 
+    inferred_year_gaps: tuple[str, ...] = ()
     period_year = _YEAR.search(raw_period)
     if period_year is not None:
         reference_year = int(period_year.group(1))
@@ -375,6 +380,7 @@ def _resolve_record_period(record: DeliveryRecord) -> _PeriodResolution:
                 evidence_gaps=("period.year.required",),
             )
         reference_year = int(observed_year.group(1))
+        inferred_year_gaps = ("period.year.inferred",)
 
     try:
         period = parse_period(raw_period, reference_year=reference_year)
@@ -389,7 +395,7 @@ def _resolve_record_period(record: DeliveryRecord) -> _PeriodResolution:
         status="dated",
         sort_start=sort_start(period),
         quarter_badges=quarters_for(period),
-        evidence_gaps=(),
+        evidence_gaps=inferred_year_gaps,
     )
 
 

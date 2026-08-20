@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from careeros.models import DeliveryRecord
 
 _TOKEN = re.compile(r"[a-z0-9]+")
+_DIGITS = re.compile(r"\d+")
 _CLAIM_STOPWORDS = frozenset(
     {
         "about",
@@ -97,13 +98,20 @@ def leader_review(records: Sequence[DeliveryRecord]) -> LeaderReview:
 
 
 def _impact_claim_supported(record: DeliveryRecord) -> bool:
-    claim_tokens = _meaningful_tokens(record.result or "")
-    if not claim_tokens:
+    result = record.result or ""
+    claim_tokens = _meaningful_tokens(result)
+    digit_sequences = _DIGITS.findall(result)
+    if not claim_tokens and not digit_sequences:
         return False
     for evidence in record.evidence:
         if not evidence.locator.strip() or not evidence.excerpt.strip():
             continue
-        if claim_tokens.intersection(_meaningful_tokens(evidence.excerpt)):
+        excerpt = evidence.excerpt
+        if digit_sequences and not all(
+            digit in excerpt for digit in digit_sequences
+        ):
+            continue
+        if claim_tokens.intersection(_meaningful_tokens(excerpt)):
             return True
     return False
 
