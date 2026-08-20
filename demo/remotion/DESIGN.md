@@ -2,7 +2,7 @@
 
 ## Goal
 
-Render a silent 36-second, 1920×1080 engineering walkthrough of the local-first Career Dev Toolkit / CareerOS. The video must show the verified pipeline and privacy boundaries without implying that synthetic evaluation certifies live Google behavior.
+Render a silent 38-second, 1920×1080 engineering walkthrough of the local-first Career Dev Toolkit / CareerOS. The video must show the verified pipeline and privacy boundaries without implying that synthetic evaluation certifies live Google behavior.
 
 ## Non-goals
 
@@ -19,7 +19,7 @@ Render a silent 36-second, 1920×1080 engineering walkthrough of the local-first
 
 ## Outputs
 
-- A Remotion composition named `CareerOSDemo` at 1920×1080, 30 fps, and 1,080 frames.
+- A Remotion composition named `CareerOSDemo` at 1920×1080, 30 fps, and 1,140 frames.
 - Seven scenes: “90% glue” workflow shorthand; architecture; harvest/dedup; privacy block; apostrophe-safe period write/read-back; eight passed synthetic eval stages; and a final live Google OAuth `NOT RUN` certification boundary.
 - `npm run render` writes `demo/remotion/out/careeros-demo.mp4`. The rendered file is copied to `/opt/cursor/artifacts/careeros-demo.mp4` and `/opt/cursor/artifacts/recording_demo.mp4` for review.
 - A colocated contract check that verifies metadata, required language, synthetic labels, and forbidden claims or secret-shaped content before rendering.

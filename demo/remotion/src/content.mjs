@@ -3,7 +3,7 @@ export const COMPOSITION = {
   width: 1920,
   height: 1080,
   fps: 30,
-  durationInFrames: 1080,
+  durationInFrames: 1140,
 };
 
 export const SCENES = [
@@ -30,7 +30,7 @@ export const SCENES = [
     duration: 180,
     eyebrow: "HARVEST + DEDUP",
     title: "Overlap becomes provenance.",
-    lead: "thread:delivery-017  +  github:pr-204  →  record:delivery-017",
+    lead: "thread:delivery-017  +  github:pr-204  +  google:event-88  →  record:delivery-017",
     note: "Merged source IDs retained · validation always runs · invalid impact stays explicit",
     detail: "Nothing is silently deleted, inferred, or promoted past an error-severity issue.",
   },
@@ -63,7 +63,7 @@ export const SCENES = [
   },
   {
     key: "certification",
-    duration: 90,
+    duration: 150,
     eyebrow: "EXTERNAL CERTIFICATION",
     title: "Live Google OAuth certification",
     lead: "NOT RUN",

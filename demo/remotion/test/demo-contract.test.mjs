@@ -31,7 +31,7 @@ test("composition metadata and scene copy preserve the evidence boundary", async
     width: 1920,
     height: 1080,
     fps: 30,
-    durationInFrames: 1080,
+    durationInFrames: 1140,
   });
   assert.equal(SCENES.length, 7);
   assert.match(copy, /90% glue/);
@@ -47,6 +47,11 @@ test("composition metadata and scene copy preserve the evidence boundary", async
   assert.match(copy, /Synthetic providers only/);
   assert.match(copy, /Live Google OAuth certification/);
   assert.match(copy, /NOT RUN/);
+  assert.match(copy, /google:event-88/);
+  assert.equal(
+    SCENES.find((scene) => scene.key === "certification")?.duration,
+    150,
+  );
   assert.doesNotMatch(copy, /live Google passed/i);
   assert.doesNotMatch(copy, /customer/i);
   assert.doesNotMatch(copy, /@/);

@@ -385,13 +385,14 @@ const HarvestScene = ({scene, index}) => {
           {[
             ["THREAD", "thread:delivery-017", "action + result"],
             ["GITHUB", "github:pr-204", "change + review"],
+            ["GOOGLE", "google:event-88", "bounded calendar window"],
           ].map(([source, id, evidence], sourceIndex) => (
             <div
               key={source}
               style={{
                 border: `1px solid ${colors.border}`,
                 borderRadius: 16,
-                padding: 24,
+                padding: 18,
                 background: colors.panel,
                 transform: `translateX(${mergeProgress * (sourceIndex === 0 ? 16 : 28)}px)`,
               }}
@@ -435,9 +436,9 @@ const HarvestScene = ({scene, index}) => {
             record:delivery-017
           </div>
           <div style={{color: colors.muted, lineHeight: 1.7, fontSize: 19}}>
-            provenance: [thread, github]
+            provenance: [thread, github, google]
             <br />
-            merged_source_ids: 2
+            merged_source_ids: 3
             <br />
             evidence_gaps: explicit
           </div>
