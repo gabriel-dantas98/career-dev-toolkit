@@ -1,7 +1,8 @@
 import pytest
 
 from careeros.deploy import DeploymentBlocked, DeployService, parse_web_app_url
-from careeros.outputs import BRAG_DOCUMENT_GID
+from careeros.outputs import BRAG_DOCUMENT_GID, build_homepage
+from careeros.urls import validate_google_exec_url
 
 
 REAL_URL = "https://script.google.com/macros/s/AKfycbSynthetic_123/exec"
@@ -82,3 +83,22 @@ def test_parse_web_app_url_accepts_workspace_domain_exec_url() -> None:
     )
 
     assert parse_web_app_url(f"web app {url}") == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://script.google.com/anything/exec",
+        "https://script.google.com/macros/s/synthetic/exec?query=1",
+        "https://script.google.com/macros/s/synthetic/exec#fragment",
+        "https://script.google.com:443/macros/s/synthetic/exec",
+        "https://user@script.google.com/macros/s/synthetic/exec",
+    ],
+)
+def test_deploy_and_homepage_share_strict_macros_exec_validation(url: str) -> None:
+    with pytest.raises(ValueError, match="Google Apps Script"):
+        validate_google_exec_url(url)
+    with pytest.raises(ValueError, match="Google Apps Script"):
+        build_homepage(url)
+    with pytest.raises(DeploymentBlocked, match="/exec"):
+        parse_web_app_url(f"web app {url}")

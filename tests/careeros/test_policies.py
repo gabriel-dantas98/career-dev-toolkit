@@ -80,8 +80,26 @@ def test_vanity_metric_without_links_is_never_accepted() -> None:
     )
 
     assert {finding.rule_id for finding in findings} == {
-        "hero_metric.evidence.required"
+        "hero_metric.evidence.required",
+        "hero_metric.vanity.disallowed",
     }
+
+
+def test_linked_vanity_metric_is_rejected_using_metric_kind() -> None:
+    findings = validate_hero_metrics(
+        (
+            HeroMetric(
+                label="Synthetic page views",
+                value="1000",
+                kind="VaNiTy",
+                evidence_links=("https://example.invalid/evidence/views",),
+            ),
+        )
+    )
+
+    assert [(finding.rule_id, finding.metric_label) for finding in findings] == [
+        ("hero_metric.vanity.disallowed", "Synthetic page views")
+    ]
 
 
 def test_event_date_resolution_prefers_calendar_then_gmail() -> None:
@@ -169,12 +187,55 @@ def test_leader_review_is_deterministic_and_emits_findings_not_verdicts() -> Non
     reverse = leader_review((unsupported, supported))
 
     assert forward == reverse
-    assert forward.findings
+    assert {finding.rule_id for finding in forward.findings} == {
+        "leader_review.evidence.missing",
+        "leader_review.evidence_gap",
+    }
     assert all(finding.rule_id for finding in forward.findings)
     assert not hasattr(forward, "verdict")
     assert not hasattr(forward, "promotion_recommendation")
     assert "promote" not in repr(forward).lower()
     assert "level" not in repr(forward).lower()
+
+
+def test_leader_review_unsupported_impact_requires_link_but_no_claim_support() -> None:
+    record = synthetic_record(
+        result="Reduced synthetic latency.",
+        evidence=(
+            EvidenceRef(
+                locator="https://example.invalid/evidence/unrelated",
+                excerpt="A completely unrelated credential was issued.",
+                observed_at="2026-08-20T00:00:00+00:00",
+                connector="thread",
+            ),
+        ),
+    )
+
+    review = leader_review((record,))
+
+    assert [finding.rule_id for finding in review.findings] == [
+        "leader_review.impact.unsupported"
+    ]
+
+
+def test_leader_review_linked_excerpt_can_support_impact_claim() -> None:
+    record = synthetic_record(
+        result="Reduced synthetic latency.",
+        evidence=(
+            EvidenceRef(
+                locator="https://example.invalid/evidence/latency",
+                excerpt="Synthetic measurement confirms latency was reduced.",
+                observed_at="2026-08-20T00:00:00+00:00",
+                connector="thread",
+            ),
+        ),
+    )
+
+    review = leader_review((record,))
+
+    assert "leader_review.impact.unsupported" not in {
+        finding.rule_id for finding in review.findings
+    }
 
 
 def test_timeline_parity_compares_complete_apps_script_compatible_preview() -> None:

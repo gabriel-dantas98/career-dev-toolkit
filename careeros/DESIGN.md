@@ -22,7 +22,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Bounded text for `scan_sensitive(text)` privacy preflight.
 - `StoreConfig` path and a keyring backend (`get_password` / `set_password` / `delete_password`).
 - Consent grants keyed by grant type, canonical resource ID, and explicit scopes.
-- Period strings with optional `reference_year` for yearless ranges.
+- Period strings whose year is explicit in the period or, for a yearless record, in that same record's `observed_at`; output builders never borrow a year from another record.
 - Delivery and kudos records plus an external evidence mapping keyed by record ID.
 - Observations with namespaced `source_id`, Jira/PR/evidence keys, and provenance tuples.
 - Bounded `CollectRequest` payloads for thread excerpts, GitHub `gh api` queries, and Google gateway actions.
@@ -47,8 +47,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Gateway envelopes with exactly `ok`, `requestId`, `data`, `errors`, and `version`.
 - Deployment results that register the exact parsed `https://script.google.com/.../exec` URL and put that same URL in the homepage contract.
 - Homepage configuration whose default source is the brag-document gid `425749964`.
-- Promotion packets with 10–12 evidence-backed work cards when enough evidence exists, a separate collapsed community summary, and an explicit insufficient-evidence state otherwise.
-- Timeline cards whose face prefers linked impact, whose badges are canonical delivery types, and whose quarter ordering comes from the shared dates library.
+- Promotion packets with 10–12 evidence-backed work cards when enough evidence exists, separate collapsed community and recognition summaries, an unresolved-work summary, and an explicit insufficient-evidence state otherwise.
+- Timeline cards whose face prefers linked impact, whose badges are canonical delivery types, and whose quarter ordering comes from the shared dates library; unresolved records remain explicit outside the card list.
 - Evidence-policy findings, explicit unresolved enrichment results, deterministic leader-review findings, and field-level timeline parity differences.
 - `StoreUnavailable` and `ConsentDenied` terminal errors that identify the failed rule without leaking keys or sensitive input.
 
@@ -144,24 +144,26 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 ## Deployment and homepage contract
 
 - `DeployService.deploy()` runs clasp health first and performs no deployment or registration unless health passes.
-- Deployment output must contain a complete HTTPS URL on `script.google.com` whose path ends exactly in `/exec`; deployment IDs and URLs embedded inside larger attacker-controlled tokens are rejected.
+- Deployment and homepage builders share one strict validator. It accepts only complete HTTPS URLs on `script.google.com` matching `/macros/s/{deployment}/exec` or `/a/macros/{domain}/s/{deployment}/exec`; deployment IDs, looser paths, queries, fragments, ports, credentials, and URLs embedded inside larger attacker-controlled tokens are rejected.
 - The exact parsed URL is registered and copied unchanged into the homepage `webAppUrl`.
 - Homepage source configuration defaults to `kind: "brag-document"` and gid `425749964`. The unrelated Sheets homepage gid `389581671` is never used as a fallback.
 
 ## Promotion and timeline contract
 
-- Work and community are partitioned before selection. Community contributions are collapsed into one count and their evidence links; they never consume a work-card slot.
-- Only work records with nonempty evidence locators are eligible. If fewer than ten are eligible, every eligible card is returned with `insufficient_evidence` and the exact missing count; no placeholder is created. Otherwise selection is deterministic and capped at twelve.
+- Work, community, and kudos are partitioned before selection. Community contributions and kudos recognition each have a separate count, evidence links, and evidence gaps; neither consumes a work-card slot.
+- Only work records with nonempty evidence locators and resolvable period state are eligible. A yearless period resolves only from that record's own ISO `observed_at` year; no configured or cross-record year can supply it. Unresolved work is collapsed separately with links and a `period.year.required` gap.
+- Empty and wholly unresolved inputs return `insufficient_evidence` with no fabricated cards. If fewer than ten records are eligible, every eligible card is returned with the exact missing count; otherwise selection is deterministic and capped at twelve. Dated work sorts before undated work.
 - A timeline card uses an evidence-backed impact result as its face before action or title. It carries source links and unresolved evidence gaps.
-- Timeline badges represent canonical delivery types, not quarter labels. `parse_period`, `quarters_for`, and `sort_start` are the sole source of quarter expansion and ordering.
+- Timeline badges represent canonical delivery types, not quarter labels. `parse_period`, `quarters_for`, and `sort_start` are the sole source of quarter expansion and ordering. Dates sort descending while equal dates use stable record ID ascending.
+- A timeline with no resolved cards, including wholly unresolved yearless input, remains a valid versioned UI contract with an empty card list and explicit unresolved records. Every card mapping has `recordId`, `title`, `face`, `badges`, `quarterBadges`, `sortStart`, `evidenceLinks`, and `evidenceGaps`.
 - Parity compares the complete generated timeline mapping with an independently supplied Apps Script-compatible preview and reports deterministic field paths for every mismatch.
 
 ## Evidence, enrichment, and review contract
 
-- Every hero metric requires at least one nonempty supporting evidence link. Vanity and derived metrics without links are rejected rather than displayed.
+- Every hero metric requires at least one nonempty supporting evidence link. Metrics whose normalized `kind` is `vanity` are rejected even when linked; derived metrics are allowed only with links.
 - Event dates resolve in strict Calendar then Gmail order. If both are empty, the result is unresolved, records Calendar and Gmail as queried, and records Luma as unavailable—not queried.
 - Kudos enrichment requires both a name and month. Talk and external credential enrichment preserve every input evidence link and return explicit unresolved fields instead of guessed values.
-- Leader review emits sorted, stable findings about evidence and record quality. It has no promotion recommendation, level score, readiness verdict, or inferred impact.
+- Leader review emits sorted, stable findings about evidence and record quality. Missing evidence produces `leader_review.evidence.missing`; `leader_review.impact.unsupported` is reserved for an impact record that has a link but whose bounded evidence excerpt does not support a normalized result token. It has no promotion recommendation, level score, readiness verdict, or inferred impact.
 
 ## Voice/Tone
 
