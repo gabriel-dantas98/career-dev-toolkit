@@ -1,16 +1,47 @@
 import json
+import re
 from datetime import datetime, timezone
-from typing import Any
 
 from careeros.store import EncryptedStore
+
+GOOGLE_SHEET_URL = re.compile(
+    r"https?://docs\.google\.com/spreadsheets/d/([a-zA-Z0-9_-]+)",
+)
+GOOGLE_DOC_URL = re.compile(
+    r"https?://docs\.google\.com/document/d/([a-zA-Z0-9_-]+)",
+)
+NAMESPACED_ID = re.compile(
+    r"^(sheet|doc|job|connector):[A-Za-z0-9_-]+$",
+    re.IGNORECASE,
+)
 
 
 class ConsentDenied(Exception):
     """Raised when consent is missing, revoked, or out of scope."""
 
 
+class InvalidResourceId(ValueError):
+    """Raised when a resource ID cannot be canonicalized."""
+
+
 def normalize_resource_id(resource_id: str) -> str:
-    return resource_id.strip()
+    stripped = resource_id.strip()
+    if not stripped:
+        raise InvalidResourceId("Resource ID is empty")
+
+    sheet_match = GOOGLE_SHEET_URL.search(stripped)
+    if sheet_match:
+        return f"sheet:{sheet_match.group(1)}"
+
+    doc_match = GOOGLE_DOC_URL.search(stripped)
+    if doc_match:
+        return f"doc:{doc_match.group(1)}"
+
+    if NAMESPACED_ID.match(stripped):
+        prefix, identifier = stripped.split(":", 1)
+        return f"{prefix.lower()}:{identifier}"
+
+    raise InvalidResourceId("Unsupported resource ID format")
 
 
 class ConsentService:
