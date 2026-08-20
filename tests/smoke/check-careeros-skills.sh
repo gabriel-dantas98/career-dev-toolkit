@@ -84,9 +84,15 @@ for skill in "${skills[@]}"; do
     fail "skills/${skill}/SKILL.md contains platform-specific behavior"
   fi
 
+  command_input='{}'
+  if [[ "$skill" == "validate-bragsheet-integrity" ]] ||
+    [[ "$skill" == "build-promo-packet" ]]; then
+    command_input='{"records":[]}'
+  fi
   command_output="$(
     cd "$repo_root" &&
-      printf '{}\n' | PYTHONPATH=. "$python_command" -m careeros "$skill" --json 2>/dev/null
+      printf '%s\n' "$command_input" |
+        PYTHONPATH=. "$python_command" -m careeros "$skill" --json 2>/dev/null
   )"
   if [[ -z "$command_output" ]]; then
     fail "python -m careeros ${skill} did not emit a JSON envelope"

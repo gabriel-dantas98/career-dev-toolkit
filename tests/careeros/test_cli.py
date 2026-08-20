@@ -81,7 +81,12 @@ def test_portable_skill_command_is_registered(
     run_cli: Callable[..., subprocess.CompletedProcess[str]],
     command: str,
 ) -> None:
-    result = run_cli(command, "--json", stdin="{}\n")
+    payload = (
+        {"records": []}
+        if command in {"validate-bragsheet-integrity", "build-promo-packet"}
+        else {}
+    )
+    result = run_cli(command, "--json", stdin=json.dumps(payload))
     envelope = json.loads(result.stdout)
 
     assert envelope["command"] == command
