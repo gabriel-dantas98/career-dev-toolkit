@@ -45,7 +45,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 
 - Production connects exclusively through `sqlcipher3` via the `sqlcipher_driver` import boundary; stdlib `sqlite3` is test-only to prove refusal.
 - A 256-bit key is generated locally, stored in the OS keychain under `careeros` / `db-key:<resolved-path>`, and validated as 64 lowercase hex characters before `PRAGMA key` interpolation (parameter binding is unsupported by the driver).
-- Startup executes `PRAGMA key` immediately, requires a nonempty `PRAGMA cipher_version`, applies versioned migrations, and refuses when applied migration versions exceed runtime support.
+- Startup executes `PRAGMA key` immediately, requires a nonempty `PRAGMA cipher_version`, applies versioned migrations (currently through `002_record_metadata.sql`), and refuses when applied migration versions exceed runtime support.
+- Migration `002` adds `records.metadata_json` for canonical typed metadata and `evidence.connector` for provenance round-trip.
 - On POSIX, existing database files with group or world read/write bits fail closed; newly created files are chmod `0600`. Broad existing files are never silently repaired.
 - Keychain, driver, cipher, migration, and permission failures map deterministically to `StoreUnavailable` without echoing key material. Connections are closed on every startup failure.
 
@@ -94,6 +95,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Client-side `max_results` truncation applies to GitHub and Google search responses even when providers over-return.
 - `ConsentService.require("connector", "connector:google", action)` runs immediately before gateway invocation.
 - Connector observations use provider source timestamps when present and current UTC observation time otherwise; epoch placeholders are never fabricated.
+- Gmail snippets and excerpts use `bound_excerpt` (`MAX_THREAD_EXCERPT`) before observation creation.
 
 ## Harvest contract
 
@@ -102,6 +104,9 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Merged records preserve all provenance connectors and `merged_source_ids` on `RecordMetadata`.
 - Evidence refs carry a `connector` field for each contributing source.
 - Production persistence uses `EncryptedRecordStore` over the SQLCipher connection with atomic commit/rollback.
+- `records.metadata_json` stores deterministic JSON for `RecordMetadata` (`jira_key`, `pr_status`, `narrative_status`, `epic_parent`, `provenance`, `merged_source_ids`, `evidence_locators`).
+- `evidence.connector` is persisted alongside locator, excerpt, and observed-at for read-back.
+- Persistence failures return `HarvestResult.persistence_error` with `harvest.persistence.failed`; nothing is left partially persisted after rollback.
 - `MemoryStore` remains test-only.
 
 ## Voice/Tone

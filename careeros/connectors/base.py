@@ -99,6 +99,10 @@ def validate_time_window(time_window: tuple[str, str]) -> None:
         raise ConnectorRequestInvalid("time window start must be before end")
 
 
+def bound_excerpt(text: str) -> str:
+    return text[:MAX_THREAD_EXCERPT]
+
+
 def _parse_iso8601(value: str) -> datetime:
     normalized = value.replace("Z", "+00:00")
     parsed = datetime.fromisoformat(normalized)

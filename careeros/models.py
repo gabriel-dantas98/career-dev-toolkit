@@ -42,6 +42,7 @@ class RecordMetadata:
     epic_parent: str | None = None
     provenance: tuple[str, ...] = ()
     merged_source_ids: tuple[str, ...] = ()
+    evidence_locators: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

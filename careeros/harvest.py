@@ -4,7 +4,6 @@ import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-
 from careeros.connectors.timestamps import utc_now_iso
 from careeros.dedup import deduplicate
 from careeros.models import DeliveryRecord, EvidenceRef, RecordMetadata, ValidationIssue
@@ -27,6 +26,15 @@ class HarvestResult:
     records: tuple[DeliveryRecord, ...]
     issues: tuple[ValidationIssue, ...]
     persisted: bool
+    persistence_error: Mapping[str, object] | None = None
+
+
+class HarvestPersistenceError(Exception):
+    """Raised when validated harvest records cannot be persisted."""
+
+    def __init__(self, message: str, *, cause: Exception | None = None) -> None:
+        super().__init__(message)
+        self.cause = cause
 
 
 class MemoryStore:
@@ -97,8 +105,16 @@ class HarvestService:
                 persist = getattr(self._store, "persist_records")
                 persist(tuple(final_records))
                 persisted = True
-            except Exception:
-                persisted = False
+            except Exception as exc:
+                return HarvestResult(
+                    records=tuple(final_records),
+                    issues=tuple(issues),
+                    persisted=False,
+                    persistence_error={
+                        "code": "harvest.persistence.failed",
+                        "message": type(exc).__name__,
+                    },
+                )
 
         return HarvestResult(
             records=tuple(final_records),
@@ -148,6 +164,9 @@ class HarvestService:
         evidence = self._build_evidence(merged, raw_observations)
         provenance = merged.get("provenance", ())
         merged_source_ids = merged.get("merged_source_ids", ())
+        evidence_locators = tuple(
+            ref.locator.strip() for ref in evidence if ref.locator.strip()
+        )
         metadata = RecordMetadata(
             jira_key=(
                 str(merged["jira_key"]) if merged.get("jira_key") is not None else None
@@ -160,6 +179,9 @@ class HarvestService:
                 if merged.get("narrative_status") is not None
                 else None
             ),
+            epic_parent=(
+                str(merged["epic_parent"]) if merged.get("epic_parent") is not None else None
+            ),
             provenance=(
                 tuple(str(item) for item in provenance)
                 if isinstance(provenance, tuple)
@@ -170,6 +192,7 @@ class HarvestService:
                 if isinstance(merged_source_ids, tuple)
                 else ()
             ),
+            evidence_locators=evidence_locators,
         )
 
         confidence = merged.get("confidence")

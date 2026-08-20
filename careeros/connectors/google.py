@@ -10,6 +10,7 @@ from careeros.connectors.base import (
     CollectRequest,
     ConnectorRequestInvalid,
     Observation,
+    bound_excerpt,
     validate_time_window,
 )
 from careeros.connectors.timestamps import observation_timestamp, utc_now_iso
@@ -163,7 +164,7 @@ def _gmail_observation(item: Mapping[str, Any]) -> Observation:
         tags=("kudos",) if "kudos" in subject.lower() else ("delivery",),
         period=None,
         observed_at=observation_timestamp(item.get("date")),
-        excerpt=snippet,
+        excerpt=bound_excerpt(snippet),
         provenance=("google",),
     )
 

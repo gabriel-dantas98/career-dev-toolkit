@@ -192,6 +192,40 @@ def test_google_connector_bounded_search_invokes_gateway(
     assert fake_gateway.calls[0]["maxResults"] == 2  # type: ignore[attr-defined]
 
 
+def test_google_connector_caps_gmail_snippet_to_bounded_excerpt(
+    fake_gateway,
+    google_consent,
+) -> None:
+    class LongSnippetGateway:
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            return {
+                "ok": True,
+                "data": {
+                    "messages": [
+                        {
+                            "id": "msg-long",
+                            "subject": "Long snippet",
+                            "snippet": "x" * 10_000,
+                            "date": "2026-01-10T00:00:00Z",
+                        }
+                    ]
+                },
+            }
+
+    connector = GoogleConnector(LongSnippetGateway(), consent=google_consent)
+    observations = connector.collect(
+        CollectRequest(
+            source="gmail",
+            action="gmail.search",
+            query="recognition",
+            time_window=("2026-01-01T00:00:00Z", "2026-01-31T00:00:00Z"),
+            max_results=1,
+        )
+    )
+    assert len(observations) == 1
+    assert len(observations[0].excerpt) == 8_000
+
+
 def test_google_allowed_actions_are_fixed() -> None:
     assert GOOGLE_ALLOWED_ACTIONS == frozenset(
         {
