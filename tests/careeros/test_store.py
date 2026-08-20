@@ -5,7 +5,12 @@ import stat
 import pytest
 
 from careeros.crypto import KEYRING_SERVICE, key_account_for
-from careeros.store import StoreConfig, StoreUnavailable, open_encrypted_store
+from careeros.store import (
+    CURRENT_MIGRATION_VERSION,
+    StoreConfig,
+    StoreUnavailable,
+    open_encrypted_store,
+)
 
 
 def test_store_refuses_driver_without_cipher(fake_keyring, tmp_path) -> None:
@@ -60,7 +65,9 @@ def test_production_sqlcipher_driver_encrypts_migrates_and_reopens(
 
     assert cipher_version is not None
     assert cipher_version[0]
-    assert migrations == [(1,), (2,), (3,)]
+    assert migrations == [
+        (version,) for version in range(1, CURRENT_MIGRATION_VERSION + 1)
+    ]
 
     reopened = open_encrypted_store(config, fake_keyring)
     try:
@@ -110,7 +117,9 @@ def test_store_unit_cipher_capability_stub_applies_migrations(
         applied = store.connection().execute(
             "SELECT version FROM migrations ORDER BY version"
         ).fetchall()
-        assert applied == [(1,), (2,), (3,)]
+        assert applied == [
+            (version,) for version in range(1, CURRENT_MIGRATION_VERSION + 1)
+        ]
     finally:
         store.close()
 
@@ -166,7 +175,7 @@ def test_store_refuses_migration_version_ahead_of_runtime(
     )
     store.connection().execute(
         "INSERT INTO migrations (version, applied_at) VALUES (?, ?)",
-        (4, "2026-01-01T00:00:00+00:00"),
+        (CURRENT_MIGRATION_VERSION + 1, "2026-01-01T00:00:00+00:00"),
     )
     store.connection().commit()
     store.close()
