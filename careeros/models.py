@@ -23,6 +23,7 @@ class EvidenceRef:
     locator: str
     excerpt: str
     observed_at: str
+    connector: str = ""
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,8 @@ class RecordMetadata:
     pr_status: str | None = None
     narrative_status: str | None = None
     epic_parent: str | None = None
+    provenance: tuple[str, ...] = ()
+    merged_source_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Period strings with optional `reference_year` for yearless ranges.
 - Delivery and kudos records plus an external evidence mapping keyed by record ID.
 - Observations with namespaced `source_id`, Jira/PR/evidence keys, and provenance tuples.
+- Bounded `CollectRequest` payloads for thread excerpts, GitHub `gh api` queries, and Google gateway actions.
+- `HarvestRequest` observation batches normalized, deduplicated, validated, and persisted transactionally.
 
 ## Outputs
 
@@ -30,6 +32,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - `PrivacyFinding` lists with category and span offsets, never echoing matched secret substrings.
 - `EncryptedStore` backed by SQLCipher with migrated tables for records, evidence, grants, sync runs, and migrations.
 - `ConsentService` grant, require, and revoke operations with destination, connector, and background isolation.
+- `Connector.collect(request) -> tuple[Observation, ...]` from thread, GitHub, and Google adapters.
+- `HarvestService.run(request) -> HarvestResult` with merged records, validation issues, and persist status.
 - `StoreUnavailable` and `ConsentDenied` terminal errors that identify the failed rule without leaking keys or sensitive input.
 
 ## Privacy contract
@@ -78,6 +82,22 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Typed `DeliveryRecord` metadata (`jira_key`, `pr_status`, `narrative_status`, `epic_parent`) is preserved through `RecordMetadata` with backward-compatible defaults.
 - Impact validation consults both per-record evidence and the external `evidence` mapping keyed by record ID; disjoint locators raise `impact.evidence.inconsistent`.
 - Rule IDs include: `kudos.name.required`, `kudos.month.required`, `title.tags.mismatch`, `jira.duplicate`, `github.pr.narrative_mismatch`, `impact.evidence.missing`, `impact.evidence.inconsistent`, `epic.duplicate`, `taxonomy.prefix.required`, `taxonomy.confidence.exceeds_cap`.
+
+## Connector contract
+
+- `Connector.collect(request) -> tuple[Observation, ...]` is the shared protocol for bounded source collection.
+- Thread ingestion accepts only caller-provided excerpts up to `MAX_THREAD_EXCERPT` and runs `scan_sensitive` before parsing.
+- GitHub invokes `gh api` through argv (`shell=False`) with explicit `fields` and bounded `max_results`.
+- Google allows only `calendar.search`, `gmail.search`, `drive.search`, `docs.read`, and `sheets.read`.
+- Google search actions require a bounded `time_window` and `max_results`; read actions require an explicit `resource_id`.
+- `ConsentService.require("connector", "connector:google", action)` runs immediately before gateway invocation.
+
+## Harvest contract
+
+- `HarvestService.run` normalizes observations, applies transitive `deduplicate`, runs validators, and persists only when no error-severity issues remain.
+- Merged records preserve all provenance connectors and `merged_source_ids` on `RecordMetadata`.
+- Evidence refs carry a `connector` field for each contributing source.
+- Persistence is transactional within the store adapter; partial writes roll back on failure.
 
 ## Voice/Tone
 
