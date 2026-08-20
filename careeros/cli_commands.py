@@ -134,6 +134,13 @@ def handle_harvest_retrospective(
     if not observations:
         return _input_error(command, "At least one bounded observation is required")
 
+    blocked = privacy_result(
+        command,
+        tuple(observation.as_dict() for observation in observations),
+    )
+    if blocked is not None:
+        return blocked
+
     result = HarvestService(store).run(
         HarvestRequest(
             observations=tuple(observation.as_dict() for observation in observations),
