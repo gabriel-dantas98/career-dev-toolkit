@@ -9,10 +9,13 @@ from typing import Any
 import pytest
 
 from careeros.cli import (
+    handle_harvest_retrospective,
     handle_sync_careeros_background,
     handle_write_bragsheet_safe,
 )
+from careeros.connectors.base import Observation
 from careeros.consent import ConsentDenied, ConsentService
+from careeros.harvest import memory_store
 from careeros.models import DeliveryRecord, EvidenceRef
 from careeros.sync import EncryptedSyncRunStore, SyncService
 
@@ -112,6 +115,44 @@ def test_private_input_blocks_before_configuration_and_never_echoes_secret(
     assert envelope["data"]["findings"][0]["category"] == "api-key"
     assert synthetic_secret not in result.stdout
     assert synthetic_secret not in result.stderr
+
+
+def test_harvest_blocks_sensitive_connector_output_before_persistence() -> None:
+    synthetic_secret = "sk-SYNTHETIC_CONNECTOR_123456"
+    store = memory_store()
+
+    class SensitiveConnector:
+        def collect(self, _request) -> tuple[Observation, ...]:
+            return (
+                Observation(
+                    source_id="github:pull/77",
+                    source_connector="github",
+                    source_locator="https://github.test/org/repo/pull/77",
+                    title="[Delivery] Synthetic connector result",
+                    tags=("delivery",),
+                    period=None,
+                    observed_at="2026-08-20T00:00:00+00:00",
+                    excerpt=f"Synthetic retrieved token {synthetic_secret}",
+                    provenance=("github",),
+                ),
+            )
+
+    result = handle_harvest_retrospective(
+        {
+            "github": {
+                "endpoint": "repos/example/example/pulls",
+                "fields": "number,title",
+                "max_results": 1,
+            }
+        },
+        store=store,
+        github_connector=SensitiveConnector(),
+    )
+
+    assert result.ok is False
+    assert result.errors[0]["code"] == "privacy.blocked"
+    assert store.count_records() == 0
+    assert synthetic_secret not in json.dumps(result.as_dict())
 
 
 def test_capture_returns_fixed_draft_shape_with_explicit_star_gaps(
