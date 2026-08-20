@@ -213,6 +213,19 @@ Reports are written to the ignored `.eval-results/` directory. They contain sani
 
 The committed Task 10 evidence is in `tests/evidence/careeros-verification.md` and `tests/evidence/careeros-eval.json`. It is a sanitized snapshot, not a substitute for rerunning checks in the target environment.
 
+### Remotion walkthrough
+
+A silent 38-second 1920×1080 demo lives in `demo/remotion/`. It shows the verified local pipeline and the live Google `NOT RUN` boundary. Render it separately so root Node tests stay independent of Remotion:
+
+```bash
+cd demo/remotion
+npm install
+npm run browser:ensure
+npm run render
+```
+
+The output is `demo/remotion/out/careeros-demo.mp4` and is gitignored.
+
 The `smoke-test` workflow blocks pull requests using only deterministic checks. The manual `provider-evals` workflow reads `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` from repository secrets, skips providers whose credentials are unavailable and uploads reports for 14 days.
 
 ## Remaining gaps
