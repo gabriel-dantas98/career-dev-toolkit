@@ -17,7 +17,12 @@ except ImportError:
 MAX_REQUEST_BYTES = 256 * 1024
 MAX_ATTEMPTS = 5
 DEFAULT_TIMEOUT_SECONDS = 120.0
-MUTATING_ACTIONS = frozenset({"sheets.writeBragsheet"})
+MUTATING_ACTIONS = frozenset(
+    {
+        "sheets.writeBragsheet",
+        "sheets.writeHomepage",
+    }
+)
 TRANSIENT_MARKERS = (
     "unable to open the file",
     "sorry, unable to open",

@@ -9,6 +9,9 @@ var MAX_DOC_CHARS = 8000;
 var MAX_SHEET_READ_CELLS = 500;
 var MAX_BRAGSHEET_ROWS = 200;
 var MAX_BRAGSHEET_COLUMNS = 12;
+var MAX_HOMEPAGE_ROWS = 3;
+var MAX_HOMEPAGE_COLUMNS = 2;
+var BRAG_DOCUMENT_GID = 425749964;
 var MAX_CELL_CHARS = 8000;
 var MAX_SHEET_ROWS = 1000000;
 var MAX_SHEET_COLUMNS = 18278;
@@ -21,6 +24,7 @@ var ALLOWED_ACTIONS = Object.freeze([
   "docs.read",
   "sheets.read",
   "sheets.writeBragsheet",
+  "sheets.writeHomepage",
   "sheets.readBack",
 ]);
 
@@ -104,6 +108,8 @@ function dispatch_(request, dependencies) {
       return sheetsRead_(request, dependencies);
     case "sheets.writeBragsheet":
       return sheetsWriteBragsheet_(request, dependencies);
+    case "sheets.writeHomepage":
+      return sheetsWriteHomepage_(request, dependencies);
     case "sheets.readBack":
       return sheetsReadBack_(request, dependencies);
     default:
@@ -160,6 +166,7 @@ function gmailSearch_(request, dependencies) {
       messages.push({
         id: String(message.getId()),
         subject: boundString_(message.getSubject(), 500),
+        from: boundString_(message.getFrom(), 500),
         date: toIso_(message.getDate()),
         snippet: boundString_(message.getPlainBody(), 500),
       });
@@ -276,6 +283,79 @@ function sheetsWriteBragsheet_(request, dependencies) {
     range: range,
     updatedRows: matrix.rows,
     updatedColumns: matrix.columns,
+  };
+}
+
+function sheetsWriteHomepage_(request, dependencies) {
+  var spreadsheetId = validateResourceId_(
+    request.spreadsheetId,
+    "spreadsheetId"
+  );
+  var sheetName = validateSheetName_(request.sheetName);
+  if (sheetName !== "Homepage") {
+    throw new GatewayError(
+      "INVALID_HOMEPAGE_SHEET",
+      "Homepage writes require the exact Homepage sheet."
+    );
+  }
+  if (request.range !== "A1:B3") {
+    throw new GatewayError(
+      "HOMEPAGE_RANGE_OUT_OF_BOUNDS",
+      "Homepage writes require the exact bounded A1:B3 range."
+    );
+  }
+  if (request.inputMode !== "RAW") {
+    throw new GatewayError(
+      "RAW_REQUIRED",
+      "Homepage writes require RAW input mode."
+    );
+  }
+
+  var homepage = request.homepage;
+  var source = homepage && homepage.source;
+  if (
+    !homepage ||
+    Array.isArray(homepage) ||
+    typeof homepage !== "object" ||
+    !source ||
+    Array.isArray(source) ||
+    typeof source !== "object" ||
+    source.kind !== "brag-document" ||
+    source.gid !== BRAG_DOCUMENT_GID
+  ) {
+    throw new GatewayError(
+      "INVALID_HOMEPAGE_MODEL",
+      "Homepage model must use the fixed brag-document source."
+    );
+  }
+  var webAppUrl = validateWebAppUrl_(homepage.webAppUrl);
+  var values = [
+    ["webAppUrl", webAppUrl],
+    ["source.kind", "brag-document"],
+    ["source.gid", BRAG_DOCUMENT_GID],
+  ];
+  if (
+    values.length !== MAX_HOMEPAGE_ROWS ||
+    values[0].length !== MAX_HOMEPAGE_COLUMNS
+  ) {
+    throw new GatewayError(
+      "HOMEPAGE_RANGE_OUT_OF_BOUNDS",
+      "Homepage model exceeds fixed bounds."
+    );
+  }
+
+  var range = quoteSheetName_(sheetName) + "!A1:B3";
+  var sheetsApi = dependencies.sheets || productionSheets_();
+  sheetsApi.update(
+    { values: values },
+    spreadsheetId,
+    range,
+    { valueInputOption: "RAW" }
+  );
+  return {
+    range: range,
+    updatedRows: MAX_HOMEPAGE_ROWS,
+    updatedColumns: MAX_HOMEPAGE_COLUMNS,
   };
 }
 
@@ -467,6 +547,18 @@ function validateResourceId_(value, fieldName) {
     throw new GatewayError(
       "INVALID_RESOURCE_ID",
       fieldName + " must be an explicit Google resource ID."
+    );
+  }
+  return value;
+}
+
+function validateWebAppUrl_(value) {
+  var pattern =
+    /^https:\/\/script\.google\.com\/(?:macros\/s\/[A-Za-z0-9_-]+|a\/macros\/[A-Za-z0-9.-]+\/s\/[A-Za-z0-9_-]+)\/exec$/;
+  if (typeof value !== "string" || !pattern.test(value)) {
+    throw new GatewayError(
+      "INVALID_WEB_APP_URL",
+      "Homepage webAppUrl must be an exact Google Apps Script /exec URL."
     );
   }
   return value;

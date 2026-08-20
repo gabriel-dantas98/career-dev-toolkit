@@ -65,3 +65,6 @@ class DeliveryRecord:
     content_fingerprint: str
     observed_at: str
     metadata: RecordMetadata = field(default_factory=RecordMetadata)
+    record_type: str = "delivery"
+    name: str | None = None
+    month: str | None = None

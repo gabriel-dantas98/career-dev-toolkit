@@ -321,6 +321,7 @@ def handle_deploy_careeros_timeline(service: DeployService) -> CommandResult:
         data={
             "webAppUrl": result.web_app_url,
             "homepage": result.homepage,
+            "homepageWritten": result.homepage_written,
         },
     )
 
@@ -448,6 +449,9 @@ def record_from_mapping(value: object) -> DeliveryRecord:
                 metadata_value.get("evidence_locators", ())
             ),
         ),
+        record_type=str(value.get("record_type", "delivery")),
+        name=_optional_text(value.get("name")),
+        month=_optional_text(value.get("month")),
     )
 
 
@@ -565,6 +569,9 @@ def _observation_from_json(value: object) -> Observation:
         pr_status=_optional_text(value.get("pr_status")),
         narrative_status=_optional_text(value.get("narrative_status")),
         confidence=_optional_text(value.get("confidence")),
+        record_type=str(value.get("record_type", "delivery")),
+        name=_optional_text(value.get("name")),
+        month=_optional_text(value.get("month")),
     )
 
 

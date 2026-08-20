@@ -35,10 +35,12 @@ def _record_view(record: Mapping[str, object] | DeliveryRecord) -> Mapping[str, 
     if isinstance(record, DeliveryRecord):
         metadata = record.metadata
         return {
-            "record_type": "delivery",
+            "record_type": record.record_type,
             "id": record.id,
             "title": record.title,
             "tags": record.tags,
+            "name": record.name,
+            "month": record.month,
             "confidence": record.confidence,
             "result": record.result or "",
             "evidence": record.evidence,

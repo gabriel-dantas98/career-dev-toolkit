@@ -16,7 +16,12 @@ from careeros.projections import BragSheetProjection
 from careeros.sync import SyncGateway, SyncRun
 
 JOB_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-WRITE_ACTIONS = frozenset({"sheets.writeBragsheet"})
+WRITE_ACTIONS = frozenset(
+    {
+        "sheets.writeBragsheet",
+        "sheets.writeHomepage",
+    }
+)
 STALE_MALFORMED_LOCK_SECONDS = 60 * 60
 
 

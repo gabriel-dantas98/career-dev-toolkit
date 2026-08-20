@@ -16,7 +16,7 @@ from careeros.crypto import (
 )
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-CURRENT_MIGRATION_VERSION = 3
+CURRENT_MIGRATION_VERSION = 4
 
 
 class StoreUnavailable(Exception):

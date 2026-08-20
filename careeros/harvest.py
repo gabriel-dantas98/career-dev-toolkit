@@ -4,8 +4,10 @@ import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+
 from careeros.connectors.timestamps import utc_now_iso
 from careeros.dedup import deduplicate
+from careeros.enrichment import enrich_kudos
 from careeros.models import DeliveryRecord, EvidenceRef, RecordMetadata, ValidationIssue
 from careeros.taxonomy import apply_confidence_cap, classify_context, normalize_delivery_prefix
 from careeros.validation import validate_records
@@ -54,6 +56,9 @@ class MemoryStore:
             pending[record.id] = {
                 "id": record.id,
                 "title": record.title,
+                "record_type": record.record_type,
+                "name": record.name,
+                "month": record.month,
                 "evidence": [
                     {
                         "locator": evidence.locator,
@@ -146,6 +151,9 @@ class HarvestService:
             content_fingerprint=record.content_fingerprint,
             observed_at=record.observed_at,
             metadata=record.metadata,
+            record_type=record.record_type,
+            name=record.name,
+            month=record.month,
         )
 
     def _to_delivery_record(
@@ -202,6 +210,22 @@ class HarvestService:
         else:
             confidence_value = "partial"
 
+        record_type = (
+            "kudos"
+            if str(merged.get("record_type", "delivery")).strip().lower() == "kudos"
+            else "delivery"
+        )
+        name = _optional_nonempty_text(merged.get("name"))
+        month = _optional_nonempty_text(merged.get("month"))
+        if record_type == "kudos":
+            enriched = enrich_kudos(
+                name=name,
+                month=month,
+                evidence_links=evidence_locators,
+            )
+            name = enriched.fields["name"]
+            month = enriched.fields["month"]
+
         record = DeliveryRecord(
             id=record_id,
             schema_version=1,
@@ -221,6 +245,9 @@ class HarvestService:
             content_fingerprint=_content_fingerprint(merged),
             observed_at=str(merged.get("observed_at", utc_now_iso())),
             metadata=metadata,
+            record_type=record_type,
+            name=name,
+            month=month,
         )
         capped = apply_confidence_cap(record)
         if capped != record.confidence:
@@ -243,6 +270,9 @@ class HarvestService:
                 content_fingerprint=record.content_fingerprint,
                 observed_at=record.observed_at,
                 metadata=record.metadata,
+                record_type=record.record_type,
+                name=record.name,
+                month=record.month,
             )
         classified = classify_context(record)
         return DeliveryRecord(
@@ -264,6 +294,9 @@ class HarvestService:
             content_fingerprint=record.content_fingerprint,
             observed_at=record.observed_at,
             metadata=record.metadata,
+            record_type=record.record_type,
+            name=record.name,
+            month=record.month,
         )
 
     def _build_evidence(
@@ -308,4 +341,11 @@ def _content_fingerprint(merged: Mapping[str, object]) -> str:
     }
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     return digest[:16]
+
+
+def _optional_nonempty_text(value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 

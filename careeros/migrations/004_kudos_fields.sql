@@ -1,0 +1,8 @@
+ALTER TABLE records
+ADD COLUMN record_type TEXT NOT NULL DEFAULT 'delivery';
+
+ALTER TABLE records
+ADD COLUMN name TEXT;
+
+ALTER TABLE records
+ADD COLUMN month TEXT;

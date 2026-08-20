@@ -30,6 +30,9 @@ class EncryptedRecordStore:
         return {
             "id": loaded.id,
             "title": loaded.title,
+            "record_type": loaded.record_type,
+            "name": loaded.name,
+            "month": loaded.month,
             "metadata": loaded.metadata,
             "evidence": [
                 {
@@ -62,7 +65,10 @@ class EncryptedRecordStore:
                 content_fingerprint,
                 observed_at,
                 metadata_json,
-                evidence_gaps
+                evidence_gaps,
+                record_type,
+                name,
+                month
             FROM records
             WHERE id = ?
             """,
@@ -109,6 +115,9 @@ class EncryptedRecordStore:
             ),
             evidence_gaps=tuple(str(gap) for gap in json.loads(row[16] or "[]")),
             metadata=deserialize_metadata(row[15]),
+            record_type=str(row[17] or "delivery"),
+            name=str(row[18]) if row[18] is not None else None,
+            month=str(row[19]) if row[19] is not None else None,
         )
 
     def load_records(self) -> tuple[DeliveryRecord, ...]:
@@ -149,8 +158,11 @@ class EncryptedRecordStore:
                         observed_at,
                         created_at,
                         metadata_json,
-                        evidence_gaps
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        evidence_gaps,
+                        record_type,
+                        name,
+                        month
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.id,
@@ -171,6 +183,9 @@ class EncryptedRecordStore:
                         now,
                         serialize_metadata(metadata),
                         json.dumps(list(record.evidence_gaps), separators=(",", ":")),
+                        record.record_type,
+                        record.name,
+                        record.month,
                     ),
                 )
                 for evidence in record.evidence:

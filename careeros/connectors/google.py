@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
+from datetime import datetime
+from email.utils import parseaddr
 from typing import Any, Protocol
 
 from careeros.consent import (
@@ -31,6 +34,10 @@ GOOGLE_ALLOWED_ACTIONS = frozenset(
 )
 
 GOOGLE_CONNECTOR_RESOURCE = "connector:google"
+_ISO_MESSAGE_DATE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$"
+)
 
 
 class GoogleGateway(Protocol):
@@ -200,17 +207,48 @@ def _gmail_observation(item: Mapping[str, Any]) -> Observation:
     message_id = str(item.get("id", "unknown"))
     subject = str(item.get("subject", "Gmail message"))
     snippet = str(item.get("snippet", ""))
+    name = _sender_display_name(item.get("from"))
+    month = _month_from_iso(item.get("date"))
     return Observation(
         source_id=f"gmail:{message_id}",
         source_connector="google",
         source_locator=f"gmail:{message_id}",
         title=subject,
-        tags=("kudos",) if "kudos" in subject.lower() else ("delivery",),
-        period=None,
+        tags=("kudos",),
+        period=month,
         observed_at=observation_timestamp(item.get("date")),
         excerpt=bound_excerpt(snippet),
         provenance=("google",),
+        record_type="kudos",
+        name=name,
+        month=month,
     )
+
+
+def _sender_display_name(value: object) -> str | None:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return None
+    display_name, _address = parseaddr(candidate)
+    normalized = display_name.strip().strip('"').strip()
+    if normalized:
+        return normalized
+    if "@" not in candidate and "<" not in candidate and ">" not in candidate:
+        return candidate.strip('"').strip() or None
+    return None
+
+
+def _month_from_iso(value: object) -> str | None:
+    candidate = str(value or "").strip()
+    if not _ISO_MESSAGE_DATE.fullmatch(candidate):
+        return None
+    try:
+        parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return f"{parsed.year:04d}-{parsed.month:02d}"
 
 
 def _calendar_observation(item: Mapping[str, Any]) -> Observation:

@@ -52,6 +52,9 @@ class Observation:
     pr_status: str | None = None
     narrative_status: str | None = None
     confidence: str | None = None
+    record_type: str = "delivery"
+    name: str | None = None
+    month: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -71,6 +74,9 @@ class Observation:
             "pr_status": self.pr_status,
             "narrative_status": self.narrative_status,
             "confidence": self.confidence,
+            "record_type": self.record_type,
+            "name": self.name,
+            "month": self.month,
         }
 
 
@@ -190,4 +196,7 @@ def observation_from_mapping(data: Mapping[str, object]) -> Observation:
             str(data["narrative_status"]) if data.get("narrative_status") is not None else None
         ),
         confidence=str(data["confidence"]) if data.get("confidence") is not None else None,
+        record_type=str(data.get("record_type", "delivery")),
+        name=str(data["name"]) if data.get("name") is not None else None,
+        month=str(data["month"]) if data.get("month") is not None else None,
     )
