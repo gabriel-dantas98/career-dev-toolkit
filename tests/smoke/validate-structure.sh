@@ -19,9 +19,24 @@ required_files=(
   ".cursor-plugin/plugin.json"
   ".cursor-plugin/marketplace.json"
   ".codex-plugin/plugin.json"
-  "skills/capture-delivery/SKILL.md"
-  "skills/capture-delivery/DESIGN.md"
 )
+
+required_skills=(
+  "capture-delivery"
+  "harvest-retrospective"
+  "validate-bragsheet-integrity"
+  "write-bragsheet-safe"
+  "deploy-careeros-timeline"
+  "build-promo-packet"
+  "sync-careeros"
+)
+
+for skill in "${required_skills[@]}"; do
+  required_files+=(
+    "skills/${skill}/SKILL.md"
+    "skills/${skill}/DESIGN.md"
+  )
+done
 
 for relative_path in "${required_files[@]}"; do
   [[ -f "${repo_root}/${relative_path}" ]] || fail "missing ${relative_path}"
@@ -83,7 +98,15 @@ codex_manifest="${repo_root}/.codex-plugin/plugin.json"
 if [[ -f "$codex_manifest" ]]; then
   codex_description="$(read_json "$codex_manifest" "description")" || codex_description=""
   [[ -n "$codex_description" ]] || fail "Codex description must not be empty"
+  codex_skills="$(read_json "$codex_manifest" "skills")" || codex_skills=""
+  [[ "$codex_skills" == "./skills/" ]] || fail "Codex skills path must equal ./skills/"
 fi
+
+for platform in ".claude-plugin" ".cursor-plugin" ".codex-plugin"; do
+  if [[ -e "${repo_root}/${platform}/skills" ]]; then
+    fail "${platform} must discover the shared skills/ directory, not a platform copy"
+  fi
+done
 
 if (( failures > 0 )); then
   printf 'Structure validation failed with %d error(s).\n' "$failures" >&2
