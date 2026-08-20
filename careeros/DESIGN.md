@@ -2,7 +2,7 @@
 
 ## Goal
 
-Provide a shared, deterministic Python runtime that exposes one CLI entry point (`python -m careeros`) and typed domain contracts consumed by portable skills and later pipeline stages. Task 2 adds fail-closed privacy scanning, SQLCipher-backed encrypted persistence, versioned migrations, and scoped revocable consent. Task 3 adds Brazilian date parsing, taxonomy classification, deterministic deduplication, and integrity validators. Task 5 adds fixed-schema brag-sheet projection, browser-mode gateway calls, consent-adjacent RAW writes, and exact read-back reconciliation.
+Provide a shared, deterministic Python runtime that exposes one CLI entry point (`python -m careeros`) and typed domain contracts consumed by portable skills and later pipeline stages. Task 2 adds fail-closed privacy scanning, SQLCipher-backed encrypted persistence, versioned migrations, and scoped revocable consent. Task 3 adds Brazilian date parsing, taxonomy classification, deterministic deduplication, and integrity validators. Task 5 adds fixed-schema brag-sheet projection, browser-mode gateway calls, consent-adjacent RAW writes, and exact read-back reconciliation. Task 6 adds fail-closed deployment health, homepage and timeline contracts, evidence-bounded promotion packets, deterministic enrichment and leader review, and timeline preview parity.
 
 ## Non-goals
 
@@ -11,6 +11,9 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Expose platform-specific behavior that diverges across Claude Code, Cursor, or Codex.
 - Offer plaintext SQLite fallback or downgrade when SQLCipher or the OS keychain is unavailable.
 - Infer background-job consent from destination or connector grants.
+- Derive a web-app URL from a deployment ID, accept a non-Apps-Script URL, or deploy after failed clasp health.
+- Fabricate promotion cards, event dates, hero metrics, evidence links, promotion readiness, or level verdicts.
+- Claim that Luma was queried; the first release exposes it only as an explicitly unavailable fallback.
 
 ## Inputs
 
@@ -26,6 +29,10 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - `HarvestRequest` observation batches normalized, deduplicated, validated, and persisted transactionally.
 - Delivery records projected to an explicit sheet ID, sheet name, start row, and fixed 12-column brag-sheet schema.
 - Apps Script web-app URLs ending in `/exec`, invoked by JSON POST through a persistent browser profile.
+- Clasp health and deploy output supplied through a narrow deployment adapter, plus an exact URL registrar.
+- Delivery records used to build homepage, timeline, promotion packet, metric, review, and enrichment outputs.
+- Calendar and Gmail event-date candidates; Luma has no callable connector in this surface.
+- Apps Script-compatible timeline preview mappings used only for deterministic parity comparison.
 
 ## Outputs
 
@@ -38,6 +45,11 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - `HarvestService.run(request) -> HarvestResult` with merged records, validation issues, and persist status.
 - `serialize_period(value)`, immutable `BragSheetProjection` previews, and `SyncService.write_and_verify()`.
 - Gateway envelopes with exactly `ok`, `requestId`, `data`, `errors`, and `version`.
+- Deployment results that register the exact parsed `https://script.google.com/.../exec` URL and put that same URL in the homepage contract.
+- Homepage configuration whose default source is the brag-document gid `425749964`.
+- Promotion packets with 10–12 evidence-backed work cards when enough evidence exists, a separate collapsed community summary, and an explicit insufficient-evidence state otherwise.
+- Timeline cards whose face prefers linked impact, whose badges are canonical delivery types, and whose quarter ordering comes from the shared dates library.
+- Evidence-policy findings, explicit unresolved enrichment results, deterministic leader-review findings, and field-level timeline parity differences.
 - `StoreUnavailable` and `ConsentDenied` terminal errors that identify the failed rule without leaking keys or sensitive input.
 
 ## Privacy contract
@@ -129,12 +141,35 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - The browser client adds a bounded request ID, timestamp, and nonce; posts JSON through an authenticated persistent Playwright profile; defaults to three attempts, permits a ceiling of five, retries only transient interstitial/status responses, and accepts only the exact gateway envelope.
 - Playwright is an optional `browser` install extra. The local synthetic transport and HTTP fixture do not require Google credentials and do not certify live OAuth behavior.
 
+## Deployment and homepage contract
+
+- `DeployService.deploy()` runs clasp health first and performs no deployment or registration unless health passes.
+- Deployment output must contain a complete HTTPS URL on `script.google.com` whose path ends exactly in `/exec`; deployment IDs and URLs embedded inside larger attacker-controlled tokens are rejected.
+- The exact parsed URL is registered and copied unchanged into the homepage `webAppUrl`.
+- Homepage source configuration defaults to `kind: "brag-document"` and gid `425749964`. The unrelated Sheets homepage gid `389581671` is never used as a fallback.
+
+## Promotion and timeline contract
+
+- Work and community are partitioned before selection. Community contributions are collapsed into one count and their evidence links; they never consume a work-card slot.
+- Only work records with nonempty evidence locators are eligible. If fewer than ten are eligible, every eligible card is returned with `insufficient_evidence` and the exact missing count; no placeholder is created. Otherwise selection is deterministic and capped at twelve.
+- A timeline card uses an evidence-backed impact result as its face before action or title. It carries source links and unresolved evidence gaps.
+- Timeline badges represent canonical delivery types, not quarter labels. `parse_period`, `quarters_for`, and `sort_start` are the sole source of quarter expansion and ordering.
+- Parity compares the complete generated timeline mapping with an independently supplied Apps Script-compatible preview and reports deterministic field paths for every mismatch.
+
+## Evidence, enrichment, and review contract
+
+- Every hero metric requires at least one nonempty supporting evidence link. Vanity and derived metrics without links are rejected rather than displayed.
+- Event dates resolve in strict Calendar then Gmail order. If both are empty, the result is unresolved, records Calendar and Gmail as queried, and records Luma as unavailable—not queried.
+- Kudos enrichment requires both a name and month. Talk and external credential enrichment preserve every input evidence link and return explicit unresolved fields instead of guessed values.
+- Leader review emits sorted, stable findings about evidence and record quality. It has no promotion recommendation, level score, readiness verdict, or inferred impact.
+
 ## Voice/Tone
 
 Direct, calm, and specific. Errors identify the failed rule or command without echoing sensitive input or key material.
 
 ## Open questions
 
-- Which additional commands register in Task 4+ without breaking the envelope contract?
+- Which additional commands register in Task 7+ without breaking the envelope contract?
 - How will schema version bumps propagate through skills and eval artifacts?
 - Which connector-specific resource ID namespaces beyond Google Sheets/Docs need canonicalization rules?
+- Live clasp authentication, deployment, homepage rendering, and Google authorization remain uncertified until exercised with a user-authorized account; synthetic adapters prove only local contracts.
