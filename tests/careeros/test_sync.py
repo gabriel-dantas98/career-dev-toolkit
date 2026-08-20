@@ -500,6 +500,34 @@ def test_browser_client_retries_transient_interstitial_with_finite_attempts() ->
     assert delays == [0.25]
 
 
+def test_browser_client_does_not_retry_ambiguous_write() -> None:
+    transport = SequenceTransport(
+        [
+            HttpResponse(status=503, text="Sorry, unable to open the file"),
+            HttpResponse(status=200, text="must not be reached"),
+        ]
+    )
+    client = BrowserModeClient(
+        "https://script.google.com/macros/s/synthetic/exec",
+        transport=transport,
+        clock=lambda: 1_787_198_400,
+        nonce_factory=lambda: "synthetic-nonce-0001",
+        request_id_factory=lambda: "request-1",
+        sleep=lambda _: None,
+        max_attempts=2,
+    )
+
+    with pytest.raises(GatewayProtocolError, match="ambiguous"):
+        client.invoke(
+            {
+                "action": "sheets.writeBragsheet",
+                "idempotencyKey": "synthetic-write-key",
+            }
+        )
+
+    assert len(transport.requests) == 1
+
+
 def test_browser_client_rejects_wrong_request_id() -> None:
     body = {
         "ok": True,

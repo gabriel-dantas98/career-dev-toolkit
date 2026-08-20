@@ -33,7 +33,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Delivery records used to build homepage, timeline, promotion packet, metric, review, and enrichment outputs.
 - Calendar and Gmail event-date candidates; Luma has no callable connector in this surface.
 - Apps Script-compatible timeline preview mappings used only for deterministic parity comparison.
-- Named background jobs mapped to fixed projections, plus explicit commands and bounded minute intervals for native user-level schedules.
+- Named background jobs mapped to fixed projections, plus explicit commands and bounded integer minute intervals for native user-level schedules.
+- `run-job <job-id>` runtime configuration from `CAREEROS_WEB_APP_URL` and `CAREEROS_BRAGSHEET_ID`, with optional local path and sheet-name overrides.
 
 ## Outputs
 
@@ -51,7 +52,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Promotion packets with 10–12 evidence-backed work cards when enough evidence exists, separate collapsed community and recognition summaries, an unresolved-work summary, and an explicit insufficient-evidence state otherwise.
 - Timeline cards whose face prefers linked impact, whose badges are canonical delivery types, and whose quarter ordering comes from the shared dates library; unresolved records remain explicit outside the card list.
 - Evidence-policy findings, explicit unresolved enrichment results, deterministic leader-review findings, and field-level timeline parity differences.
-- `JobRunner.run(job_id)` results with `synced` or `already_running` status and one idempotency key per acquired run.
+- `JobRunner.run(job_id)` results with `synced` or `already_running` status and one correlation/idempotency key per acquired run.
+- `python -m careeros run-job <job-id> [--json]` dispatch to the configured `JobRunner` with the standard `CommandResult` envelope.
 - Structured scheduler install/remove results for user-level launchd, Windows Task Scheduler, and systemd user timers.
 - `StoreUnavailable` and `ConsentDenied` terminal errors that identify the failed rule without leaking keys or sensitive input.
 
@@ -146,17 +148,24 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 
 ## Background job contract
 
-- `JobRunner` resolves only configured job IDs and acquires an atomic exclusive lock before consent checks or work. An overlapping invocation returns `already_running` without a second sync or gateway call.
+- `JobRunner` resolves only configured job IDs and acquires an atomic exclusive lock before consent checks or work. An overlapping invocation owned by a live PID returns `already_running` without a second sync or gateway call.
+- Lock directories are user-only on POSIX. A lock whose recorded PID is no longer live is reclaimed before work; malformed lock content remains fail-closed as `already_running`.
 - Acquired locks are released in a `finally` path after both successful and failed runs.
 - A destination grant never authorizes unattended execution. Every acquired run requires `ConsentService.require("background", "job:{job_id}", "run")` before work starts.
-- Each acquired run creates one idempotency key. The same key accompanies all gateway calls for that run, while separate runs receive separate keys.
+- Each acquired run creates one correlation/idempotency key. The same key accompanies all gateway calls for that run, while separate runs receive separate keys.
+- Confirmed local writes create a payload-hash receipt under the private lock directory. Reusing the same key and payload, including through a later `JobRunner` instance sharing that receipt store, skips the second write; reusing a key with a different write payload fails closed.
+- Apps Script does not interpret `idempotencyKey`; it is a correlation token at that boundary. Browser transport does not retry mutating actions after an ambiguous transport or transient response, so this runtime does not claim remote exactly-once delivery.
 - Background consent is re-checked by the guarded gateway immediately before every external invocation. Destination consent is independently re-checked immediately before each write and read-back invocation.
 - Revocation is terminal for the current operation and prevents the next external call; lock cleanup still occurs.
+- The `run-job` CLI validates the requested job, builds the local encrypted-store, projection, consent, sync, browser-gateway and lock dependencies from explicit local configuration, invokes `JobRunner.run`, and closes the store. Missing configuration and job failures return structured errors.
 
 ## Scheduler contract
 
 - `Scheduler.install(schedule)` and `Scheduler.remove(job_id)` use only native user-level facilities: launch agents under `~/Library/LaunchAgents` with the `gui/{uid}` launchd domain on macOS, Task Scheduler on Windows, and units under `~/.config/systemd/user` with `systemctl --user` on Linux.
 - A schedule contains a canonical job ID, an argv command, and a bounded positive minute interval. Generated labels, task names, and filenames derive from a validated job ID.
+- Linux timers contain both `OnStartupSec` and `OnUnitActiveSec`; no unsupported `Persistent` setting is emitted for monotonic timers. macOS launch agents use `StartInterval`, preserve argv in `ProgramArguments`, and set `RunAtLoad` false.
+- Windows intervals that Task Scheduler cannot represent return `scheduler.invalid_schedule` without invoking `schtasks`.
+- Generated Linux and macOS scheduler files use mode `0600`. Scheduler adapters never create cron files.
 - Unsupported operating systems return `scheduler.unsupported` in a structured result without invoking a command or falling back to cron.
 - Native command and filesystem failures return a structured `scheduler.command_failed` or `scheduler.install_failed` result rather than claiming installation.
 
