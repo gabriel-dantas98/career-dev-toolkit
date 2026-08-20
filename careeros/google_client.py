@@ -17,6 +17,7 @@ except ImportError:
 MAX_REQUEST_BYTES = 256 * 1024
 MAX_ATTEMPTS = 5
 DEFAULT_TIMEOUT_SECONDS = 120.0
+MUTATING_ACTIONS = frozenset({"sheets.writeBragsheet"})
 TRANSIENT_MARKERS = (
     "unable to open the file",
     "sorry, unable to open",
@@ -133,6 +134,7 @@ class BrowserModeClient:
         action = payload.get("action")
         if not isinstance(action, str) or not action:
             raise GatewayProtocolError("Gateway payload requires an action")
+        is_mutating = action in MUTATING_ACTIONS
 
         request_id = self._request_id_factory()
         request = dict(payload)
@@ -157,12 +159,20 @@ class BrowserModeClient:
                     self._timeout_seconds,
                 )
             except (OSError, TimeoutError) as exc:
+                if is_mutating:
+                    raise GatewayProtocolError(
+                        "Mutating gateway request has an ambiguous outcome"
+                    ) from exc
                 if attempt == self._max_attempts - 1:
                     raise GatewayProtocolError("Browser transport failed") from exc
                 self._sleep(_retry_delay(attempt))
                 continue
 
             if _is_transient(response):
+                if is_mutating:
+                    raise GatewayProtocolError(
+                        "Mutating gateway request has an ambiguous outcome"
+                    )
                 if attempt == self._max_attempts - 1:
                     raise GatewayProtocolError(
                         "Browser transport remained transient after bounded retries"

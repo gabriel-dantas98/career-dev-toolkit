@@ -25,9 +25,13 @@ class Schedule:
         object.__setattr__(self, "command", tuple(self.command))
         if not self.command or any(not part for part in self.command):
             raise ValueError("Schedule command must contain nonempty argv values")
+        if isinstance(self.interval_minutes, bool) or not isinstance(
+            self.interval_minutes,
+            int,
+        ):
+            raise ValueError("Schedule interval must be an integer number of minutes")
         if (
-            isinstance(self.interval_minutes, bool)
-            or self.interval_minutes < 1
+            self.interval_minutes < 1
             or self.interval_minutes > MAX_INTERVAL_MINUTES
         ):
             raise ValueError(
@@ -51,6 +55,10 @@ class SchedulerResult:
 
 
 class _CommandFailed(RuntimeError):
+    pass
+
+
+class _InvalidSchedule(ValueError):
     pass
 
 
@@ -88,6 +96,12 @@ class Scheduler:
             return self._unsupported(schedule.job_id)
         try:
             adapter.install(schedule)
+        except _InvalidSchedule:
+            return self._failure(
+                schedule.job_id,
+                "scheduler.invalid_schedule",
+                "Native scheduler cannot represent this schedule",
+            )
         except _CommandFailed:
             return self._failure(
                 schedule.job_id,
@@ -218,8 +232,8 @@ class _SystemdUserAdapter(_SchedulerAdapter):
                     f"Description=CareerOS timer for {schedule.job_id}",
                     "",
                     "[Timer]",
+                    f"OnStartupSec={schedule.interval_minutes}m",
                     f"OnUnitActiveSec={schedule.interval_minutes}m",
-                    "Persistent=true",
                     f"Unit={service_path.name}",
                     "",
                     "[Install]",
@@ -359,4 +373,4 @@ def _windows_cadence(interval_minutes: int) -> tuple[str, ...]:
         return ("/SC", "MINUTE", "/MO", str(interval_minutes))
     if interval_minutes % 1_440 == 0:
         return ("/SC", "DAILY", "/MO", str(interval_minutes // 1_440))
-    raise OSError("Windows Task Scheduler cannot represent this interval")
+    raise _InvalidSchedule("Windows Task Scheduler cannot represent this interval")

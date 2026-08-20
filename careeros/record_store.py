@@ -111,6 +111,17 @@ class EncryptedRecordStore:
             metadata=deserialize_metadata(row[15]),
         )
 
+    def load_records(self) -> tuple[DeliveryRecord, ...]:
+        rows = self._connection.execute(
+            "SELECT id FROM records ORDER BY id"
+        ).fetchall()
+        records: list[DeliveryRecord] = []
+        for row in rows:
+            record = self.load_record(str(row[0]))
+            if record is not None:
+                records.append(record)
+        return tuple(records)
+
     def persist_records(self, records: tuple[DeliveryRecord, ...]) -> None:
         connection = self._connection
         connection.execute("BEGIN")
