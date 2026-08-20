@@ -405,7 +405,7 @@ def test_browser_client_exercises_loopback_fixture_url_path() -> None:
         cwd=os.fspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
         env=environment,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
     )
     try:
         wait_for_fixture(port, process)

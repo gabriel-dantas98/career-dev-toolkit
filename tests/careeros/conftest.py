@@ -5,7 +5,9 @@ import pytest
 from careeros.store import StoreConfig, open_encrypted_store
 
 
-class FakeSqlCipherConnection(sqlite3.Connection):
+class CipherCapabilityStubConnection(sqlite3.Connection):
+    """Unit-only SQLite connection reporting synthetic cipher capability."""
+
     def execute(
         self,
         sql: str,
@@ -34,19 +36,19 @@ def fake_keyring():
 
 
 @pytest.fixture
-def fake_sqlcipher_connect():
+def cipher_capability_stub_connect():
     def connect(database: str) -> sqlite3.Connection:
-        return sqlite3.connect(database, factory=FakeSqlCipherConnection)
+        return sqlite3.connect(database, factory=CipherCapabilityStubConnection)
 
     return connect
 
 
 @pytest.fixture
-def store(fake_keyring, fake_sqlcipher_connect, tmp_path):
+def store(fake_keyring, cipher_capability_stub_connect, tmp_path):
     encrypted = open_encrypted_store(
         StoreConfig(tmp_path / "career.db"),
         fake_keyring,
-        connect=fake_sqlcipher_connect,
+        connect=cipher_capability_stub_connect,
     )
     yield encrypted
     encrypted.close()

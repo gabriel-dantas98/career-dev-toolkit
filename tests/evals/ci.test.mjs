@@ -10,11 +10,14 @@ const WORKFLOW_PATH = path.resolve(
   "../../.github/workflows/smoke-test.yml",
 );
 
-test("blocking smoke CI installs pytest and runs deterministic Python tests", () => {
+test("blocking smoke CI installs runtime and dev dependencies before Python tests", () => {
   const workflow = fs.readFileSync(WORKFLOW_PATH, "utf8");
 
   assert.match(workflow, /actions\/setup-python@v6/);
-  assert.match(workflow, /python -m pip install pytest/);
+  assert.match(workflow, /python -m pip install -e "\.\[dev\]"/);
   assert.match(workflow, /npm run test:python/);
-  assert.doesNotMatch(workflow, /pip install [^\n]*(sqlcipher|keyring)/i);
+
+  const installIndex = workflow.indexOf('python -m pip install -e ".[dev]"');
+  const testIndex = workflow.indexOf("npm run test:python");
+  assert.ok(installIndex >= 0 && installIndex < testIndex);
 });

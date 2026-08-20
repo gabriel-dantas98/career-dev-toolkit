@@ -29,8 +29,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install deterministic Python test runner
-        run: python -m pip install pytest
+      - name: Install Python runtime and test dependencies
+        run: python -m pip install -e ".[dev]"
 
       - name: Validate JSON manifests
         run: |

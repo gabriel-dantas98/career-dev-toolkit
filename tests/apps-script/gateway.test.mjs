@@ -305,18 +305,14 @@ test("one full-window update addresses only the owned rows and A:L", () => {
   const { gateway } = loadGateway();
   const deps = dependencies();
   const addressedRanges = [];
-  const state = {
-    ownedRows: Array(200).fill(undefined),
-    outsideColumn: "keep-M2",
-    outsideRow: "keep-A202",
-  };
+  let ownedRows = Array(200).fill(undefined);
   deps.sheets = {
     update(resource, _spreadsheetId, range, options) {
       addressedRanges.push(range);
       assert.deepEqual(JSON.parse(JSON.stringify(options)), {
         valueInputOption: "RAW",
       });
-      state.ownedRows = resource.values.map((row) => Array.from(row));
+      ownedRows = resource.values.map((row) => Array.from(row));
       return { updatedRange: range };
     },
   };
@@ -335,12 +331,10 @@ test("one full-window update addresses only the owned rows and A:L", () => {
 
   assert.equal(response.ok, true);
   assert.deepEqual(addressedRanges, ["'Brag Sheet'!A2:L201"]);
-  assert.equal(state.ownedRows.length, 200);
-  assert.deepEqual(state.ownedRows[0], ["first", ...Array(11).fill("")]);
-  assert.deepEqual(state.ownedRows[1], ["second", ...Array(11).fill("")]);
-  assert.deepEqual(state.ownedRows[2], Array(12).fill(""));
-  assert.equal(state.outsideColumn, "keep-M2");
-  assert.equal(state.outsideRow, "keep-A202");
+  assert.equal(ownedRows.length, 200);
+  assert.deepEqual(ownedRows[0], ["first", ...Array(11).fill("")]);
+  assert.deepEqual(ownedRows[1], ["second", ...Array(11).fill("")]);
+  assert.deepEqual(ownedRows[2], Array(12).fill(""));
 });
 
 test("read-back uses UNFORMATTED_VALUE and pads the requested matrix", () => {
@@ -381,16 +375,12 @@ test("read-back uses UNFORMATTED_VALUE and pads the requested matrix", () => {
 test("a shrinking write clears stale owned rows without expanding ownership", () => {
   const { gateway } = loadGateway();
   const deps = dependencies();
-  const state = {
-    ownedRows: Array(200).fill(undefined),
-    outsideColumn: "keep-M2",
-    outsideRow: "keep-A202",
-  };
+  let ownedRows = Array(200).fill(undefined);
   deps.sheets = {
     update(resource, _spreadsheetId, range, options) {
       assert.equal(range, "'Brag Sheet'!A2:L201");
       assert.equal(options.valueInputOption, "RAW");
-      state.ownedRows = resource.values.map((row) => Array.from(row));
+      ownedRows = resource.values.map((row) => Array.from(row));
       return { updatedRange: range };
     },
   };
@@ -421,13 +411,11 @@ test("a shrinking write clears stale owned rows without expanding ownership", ()
 
   assert.equal(first.ok, true);
   assert.equal(second.ok, true);
-  assert.deepEqual(state.ownedRows[0], [
+  assert.deepEqual(ownedRows[0], [
     "replacement",
     ...Array(11).fill(""),
   ]);
-  assert.deepEqual(state.ownedRows[1], Array(12).fill(""));
-  assert.equal(state.outsideColumn, "keep-M2");
-  assert.equal(state.outsideRow, "keep-A202");
+  assert.deepEqual(ownedRows[1], Array(12).fill(""));
 });
 
 test("resource, body, matrix, and write/read-back bounds have stable errors", () => {

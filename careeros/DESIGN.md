@@ -48,6 +48,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 ## Store contract
 
 - Production connects exclusively through `sqlcipher3` via the `sqlcipher_driver` import boundary; stdlib `sqlite3` is test-only to prove refusal.
+- Fast unit tests may inject an explicitly named SQLite cipher-capability stub to exercise migrations, key lifecycle, permissions, and startup errors. That stub is not encryption evidence and must not be described as SQLCipher.
+- The blocking CI suite installs the project runtime and `dev` extra, then runs an unskipped production-driver integration test. Certification requires a nonempty real `PRAGMA cipher_version`, all migrations, reopening with the same synthetic key, and failure when stdlib `sqlite3` attempts to read the encrypted file.
 - A 256-bit key is generated locally, stored in the OS keychain under `careeros` / `db-key:<resolved-path>`, and validated as 64 lowercase hex characters before `PRAGMA key` interpolation (parameter binding is unsupported by the driver).
 - Startup executes `PRAGMA key` immediately, requires a nonempty `PRAGMA cipher_version`, applies versioned migrations (currently through `003_evidence_gaps.sql`), and refuses when applied migration versions exceed runtime support.
 - Migration `002` adds `records.metadata_json` for canonical typed metadata and `evidence.connector` for provenance round-trip.

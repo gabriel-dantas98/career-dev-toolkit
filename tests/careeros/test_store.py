@@ -4,6 +4,7 @@ import stat
 
 import pytest
 
+from careeros.crypto import KEYRING_SERVICE, key_account_for
 from careeros.store import StoreConfig, StoreUnavailable, open_encrypted_store
 
 
@@ -16,16 +17,79 @@ def test_store_refuses_driver_without_cipher(fake_keyring, tmp_path) -> None:
         )
 
 
-def test_store_opens_with_sqlcipher_and_applies_migrations(
+def test_production_sqlcipher_driver_encrypts_migrates_and_reopens(
     fake_keyring,
-    fake_sqlcipher_connect,
+    tmp_path,
+) -> None:
+    config = StoreConfig(tmp_path / "production-cipher.db")
+    synthetic_key = "ab" * 32
+    fake_keyring.set_password(
+        KEYRING_SERVICE,
+        key_account_for(config.path),
+        synthetic_key,
+    )
+
+    store = open_encrypted_store(config, fake_keyring)
+    try:
+        cipher_version = store.connection().execute(
+            "PRAGMA cipher_version"
+        ).fetchone()
+        migrations = store.connection().execute(
+            "SELECT version FROM migrations ORDER BY version"
+        ).fetchall()
+        store.connection().execute(
+            "INSERT INTO records "
+            "(id, schema_version, source_connector, source_locator, title, "
+            "tags, content_fingerprint, observed_at, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "delivery:sqlcipher-canary",
+                1,
+                "synthetic",
+                "synthetic:sqlcipher-canary",
+                "Synthetic SQLCipher canary",
+                "[]",
+                "sqlcipher-canary-fingerprint",
+                "2026-08-20T00:00:00+00:00",
+                "2026-08-20T00:00:00+00:00",
+            ),
+        )
+        store.connection().commit()
+    finally:
+        store.close()
+
+    assert cipher_version is not None
+    assert cipher_version[0]
+    assert migrations == [(1,), (2,), (3,)]
+
+    reopened = open_encrypted_store(config, fake_keyring)
+    try:
+        row = reopened.connection().execute(
+            "SELECT title FROM records WHERE id = ?",
+            ("delivery:sqlcipher-canary",),
+        ).fetchone()
+    finally:
+        reopened.close()
+    assert row == ("Synthetic SQLCipher canary",)
+
+    plaintext = sqlite3.connect(config.path)
+    try:
+        with pytest.raises(sqlite3.DatabaseError):
+            plaintext.execute("SELECT name FROM sqlite_master").fetchall()
+    finally:
+        plaintext.close()
+
+
+def test_store_unit_cipher_capability_stub_applies_migrations(
+    fake_keyring,
+    cipher_capability_stub_connect,
     tmp_path,
 ) -> None:
     config = StoreConfig(tmp_path / "career.db")
     store = open_encrypted_store(
         config,
         fake_keyring,
-        connect=fake_sqlcipher_connect,
+        connect=cipher_capability_stub_connect,
     )
 
     try:
@@ -53,21 +117,21 @@ def test_store_opens_with_sqlcipher_and_applies_migrations(
 
 def test_store_reuses_key_from_keyring(
     fake_keyring,
-    fake_sqlcipher_connect,
+    cipher_capability_stub_connect,
     tmp_path,
 ) -> None:
     config = StoreConfig(tmp_path / "career.db")
     first = open_encrypted_store(
         config,
         fake_keyring,
-        connect=fake_sqlcipher_connect,
+        connect=cipher_capability_stub_connect,
     )
     first.close()
 
     second = open_encrypted_store(
         config,
         fake_keyring,
-        connect=fake_sqlcipher_connect,
+        connect=cipher_capability_stub_connect,
     )
     second.close()
 
@@ -91,14 +155,14 @@ def test_store_refuses_keychain_backend_failure(tmp_path) -> None:
 
 def test_store_refuses_migration_version_ahead_of_runtime(
     fake_keyring,
-    fake_sqlcipher_connect,
+    cipher_capability_stub_connect,
     tmp_path,
 ) -> None:
     config = StoreConfig(tmp_path / "career.db")
     store = open_encrypted_store(
         config,
         fake_keyring,
-        connect=fake_sqlcipher_connect,
+        connect=cipher_capability_stub_connect,
     )
     store.connection().execute(
         "INSERT INTO migrations (version, applied_at) VALUES (?, ?)",
@@ -111,7 +175,7 @@ def test_store_refuses_migration_version_ahead_of_runtime(
         open_encrypted_store(
             config,
             fake_keyring,
-            connect=fake_sqlcipher_connect,
+            connect=cipher_capability_stub_connect,
         )
 
 
@@ -131,7 +195,7 @@ def test_store_refuses_broad_existing_db_permissions(fake_keyring, tmp_path) -> 
 
 def test_store_creates_new_db_with_user_only_permissions(
     fake_keyring,
-    fake_sqlcipher_connect,
+    cipher_capability_stub_connect,
     tmp_path,
 ) -> None:
     if os.name != "posix":
@@ -141,7 +205,7 @@ def test_store_creates_new_db_with_user_only_permissions(
     store = open_encrypted_store(
         config,
         fake_keyring,
-        connect=fake_sqlcipher_connect,
+        connect=cipher_capability_stub_connect,
     )
     store.close()
 
