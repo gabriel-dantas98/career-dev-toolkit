@@ -149,7 +149,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 ## Background job contract
 
 - `JobRunner` resolves only configured job IDs and acquires an atomic exclusive lock before consent checks or work. An overlapping invocation owned by a live PID returns `already_running` without a second sync or gateway call.
-- Lock directories are user-only on POSIX. A lock whose recorded PID is no longer live is reclaimed before work; malformed lock content remains fail-closed as `already_running`.
+- Lock directories are user-only on POSIX. A lock whose recorded PID is no longer live is reclaimed before work; malformed lock content remains fail-closed while recent, then becomes reclaimable after a fixed one-hour bound so a crash during lock creation cannot wedge the job forever.
 - Acquired locks are released in a `finally` path after both successful and failed runs.
 - A destination grant never authorizes unattended execution. Every acquired run requires `ConsentService.require("background", "job:{job_id}", "run")` before work starts.
 - Each acquired run creates one correlation/idempotency key. The same key accompanies all gateway calls for that run, while separate runs receive separate keys.

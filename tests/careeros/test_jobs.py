@@ -361,6 +361,30 @@ def test_dead_pid_lock_is_reclaimed(tmp_path) -> None:
     assert not (lock_directory / "daily.lock").exists()
 
 
+def test_old_malformed_lock_is_reclaimed_instead_of_wedging_forever(tmp_path) -> None:
+    lock_directory = tmp_path / "locks"
+    lock_directory.mkdir()
+    lock_path = lock_directory / "daily.lock"
+    lock_path.write_text("", encoding="ascii")
+    os.utime(lock_path, (1, 1))
+
+    class ImmediateSync:
+        def write_and_verify(self, projection, gateway, *, idempotency_key):
+            del projection, gateway, idempotency_key
+            return type("SyncResult", (), {"status": "synced"})()
+
+    job_runner = runner(
+        tmp_path,
+        consent=ThreadSafeConsent(),
+        sync=ImmediateSync(),
+        gateway=RecordingGateway(),
+        pid_is_alive=lambda pid: True,
+    )
+
+    assert job_runner.run("daily").status == "synced"
+    assert not lock_path.exists()
+
+
 def test_lock_and_receipt_directories_are_user_only(tmp_path) -> None:
     job_runner = runner(
         tmp_path,
