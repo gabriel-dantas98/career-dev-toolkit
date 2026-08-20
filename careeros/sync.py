@@ -92,6 +92,8 @@ class SyncService:
         self,
         projection: BragSheetProjection,
         gateway: SyncGateway,
+        *,
+        idempotency_key: str | None = None,
     ) -> SyncRun:
         started_at = self._now()
 
@@ -103,10 +105,26 @@ class SyncService:
         )
 
         try:
-            write_response = gateway.invoke(_write_payload(projection))
+            write_response = gateway.invoke(
+                _write_payload(
+                    projection,
+                    idempotency_key=idempotency_key,
+                )
+            )
             _require_success(write_response, "write")
 
-            read_response = gateway.invoke(_readback_payload(projection))
+            # Revocation must stop the next external call, including read-back.
+            self._consent.require(
+                "destination",
+                projection.destination_id,
+                "write:bragsheet",
+            )
+            read_response = gateway.invoke(
+                _readback_payload(
+                    projection,
+                    idempotency_key=idempotency_key,
+                )
+            )
             _require_success(read_response, "read-back")
             actual = _extract_values(read_response)
             if not _matrices_match(projection.values, actual):
@@ -152,8 +170,12 @@ class SyncService:
         return value.astimezone(timezone.utc).isoformat()
 
 
-def _write_payload(projection: BragSheetProjection) -> dict[str, object]:
-    return {
+def _write_payload(
+    projection: BragSheetProjection,
+    *,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "action": "sheets.writeBragsheet",
         "spreadsheetId": projection.destination_id.removeprefix("sheet:"),
         "sheetName": projection.sheet_name,
@@ -161,10 +183,17 @@ def _write_payload(projection: BragSheetProjection) -> dict[str, object]:
         "inputMode": "RAW",
         "values": [list(row) for row in projection.values],
     }
+    if idempotency_key is not None:
+        payload["idempotencyKey"] = idempotency_key
+    return payload
 
 
-def _readback_payload(projection: BragSheetProjection) -> dict[str, object]:
-    return {
+def _readback_payload(
+    projection: BragSheetProjection,
+    *,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "action": "sheets.readBack",
         "spreadsheetId": projection.destination_id.removeprefix("sheet:"),
         "sheetName": projection.sheet_name,
@@ -172,6 +201,9 @@ def _readback_payload(projection: BragSheetProjection) -> dict[str, object]:
         "rowCount": projection.row_count,
         "columnCount": projection.column_count,
     }
+    if idempotency_key is not None:
+        payload["idempotencyKey"] = idempotency_key
+    return payload
 
 
 def _require_success(response: Mapping[str, object], operation: str) -> None:

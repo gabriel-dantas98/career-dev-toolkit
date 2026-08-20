@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from careeros.consent import ConsentService
+from careeros.consent import ConsentDenied, ConsentService
 from careeros.google_client import (
     BrowserModeClient,
     GatewayProtocolError,
@@ -182,8 +182,41 @@ def test_sync_checks_destination_consent_immediately_before_write(store) -> None
     assert events == [
         "consent",
         "sheets.writeBragsheet",
+        "consent",
         "sheets.readBack",
     ]
+
+
+def test_sync_rechecks_destination_consent_before_readback(store) -> None:
+    consent = ConsentService(store)
+    consent.grant(
+        "destination",
+        "sheet:synthetic-sheet",
+        ("write:bragsheet",),
+    )
+
+    class RevokingGateway(ExactGateway):
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            response = super().invoke(payload)
+            if payload["action"] == "sheets.writeBragsheet":
+                consent.revoke("destination", "sheet:synthetic-sheet")
+            return response
+
+    service = SyncService(
+        consent=consent,
+        run_store=EncryptedSyncRunStore(store.connection()),
+    )
+    projection = project_bragsheet(
+        (synthetic_record(),),
+        destination_id="sheet:synthetic-sheet",
+        sheet_name="Brag Sheet",
+    )
+    gateway = RevokingGateway()
+
+    with pytest.raises(ConsentDenied, match="revoked"):
+        service.write_and_verify(projection, gateway)
+
+    assert [call["action"] for call in gateway.calls] == ["sheets.writeBragsheet"]
 
 
 def test_write_and_exact_readback_marks_synced(store) -> None:

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Provide a shared, deterministic Python runtime that exposes one CLI entry point (`python -m careeros`) and typed domain contracts consumed by portable skills and later pipeline stages. Task 2 adds fail-closed privacy scanning, SQLCipher-backed encrypted persistence, versioned migrations, and scoped revocable consent. Task 3 adds Brazilian date parsing, taxonomy classification, deterministic deduplication, and integrity validators. Task 5 adds fixed-schema brag-sheet projection, browser-mode gateway calls, consent-adjacent RAW writes, and exact read-back reconciliation. Task 6 adds fail-closed deployment health, homepage and timeline contracts, evidence-bounded promotion packets, deterministic enrichment and leader review, and timeline preview parity.
+Provide a shared, deterministic Python runtime that exposes one CLI entry point (`python -m careeros`) and typed domain contracts consumed by portable skills and later pipeline stages. Task 2 adds fail-closed privacy scanning, SQLCipher-backed encrypted persistence, versioned migrations, and scoped revocable consent. Task 3 adds Brazilian date parsing, taxonomy classification, deterministic deduplication, and integrity validators. Task 5 adds fixed-schema brag-sheet projection, browser-mode gateway calls, consent-adjacent RAW writes, and exact read-back reconciliation. Task 6 adds fail-closed deployment health, homepage and timeline contracts, evidence-bounded promotion packets, deterministic enrichment and leader review, and timeline preview parity. Task 7 adds consent-safe background execution with exclusive per-job locks, per-run idempotency keys, and native user-level scheduler adapters.
 
 ## Non-goals
 
@@ -33,6 +33,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Delivery records used to build homepage, timeline, promotion packet, metric, review, and enrichment outputs.
 - Calendar and Gmail event-date candidates; Luma has no callable connector in this surface.
 - Apps Script-compatible timeline preview mappings used only for deterministic parity comparison.
+- Named background jobs mapped to fixed projections, plus explicit commands and bounded minute intervals for native user-level schedules.
 
 ## Outputs
 
@@ -50,6 +51,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Promotion packets with 10–12 evidence-backed work cards when enough evidence exists, separate collapsed community and recognition summaries, an unresolved-work summary, and an explicit insufficient-evidence state otherwise.
 - Timeline cards whose face prefers linked impact, whose badges are canonical delivery types, and whose quarter ordering comes from the shared dates library; unresolved records remain explicit outside the card list.
 - Evidence-policy findings, explicit unresolved enrichment results, deterministic leader-review findings, and field-level timeline parity differences.
+- `JobRunner.run(job_id)` results with `synced` or `already_running` status and one idempotency key per acquired run.
+- Structured scheduler install/remove results for user-level launchd, Windows Task Scheduler, and systemd user timers.
 - `StoreUnavailable` and `ConsentDenied` terminal errors that identify the failed rule without leaking keys or sensitive input.
 
 ## Privacy contract
@@ -141,6 +144,22 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - The browser client adds a bounded request ID, timestamp, and nonce; posts JSON through an authenticated persistent Playwright profile; defaults to three attempts, permits a ceiling of five, retries only transient interstitial/status responses, and accepts only the exact gateway envelope.
 - Playwright is an optional `browser` install extra. The local synthetic transport and HTTP fixture do not require Google credentials and do not certify live OAuth behavior.
 
+## Background job contract
+
+- `JobRunner` resolves only configured job IDs and acquires an atomic exclusive lock before consent checks or work. An overlapping invocation returns `already_running` without a second sync or gateway call.
+- Acquired locks are released in a `finally` path after both successful and failed runs.
+- A destination grant never authorizes unattended execution. Every acquired run requires `ConsentService.require("background", "job:{job_id}", "run")` before work starts.
+- Each acquired run creates one idempotency key. The same key accompanies all gateway calls for that run, while separate runs receive separate keys.
+- Background consent is re-checked by the guarded gateway immediately before every external invocation. Destination consent is independently re-checked immediately before each write and read-back invocation.
+- Revocation is terminal for the current operation and prevents the next external call; lock cleanup still occurs.
+
+## Scheduler contract
+
+- `Scheduler.install(schedule)` and `Scheduler.remove(job_id)` use only native user-level facilities: launch agents under `~/Library/LaunchAgents` with the `gui/{uid}` launchd domain on macOS, Task Scheduler on Windows, and units under `~/.config/systemd/user` with `systemctl --user` on Linux.
+- A schedule contains a canonical job ID, an argv command, and a bounded positive minute interval. Generated labels, task names, and filenames derive from a validated job ID.
+- Unsupported operating systems return `scheduler.unsupported` in a structured result without invoking a command or falling back to cron.
+- Native command and filesystem failures return a structured `scheduler.command_failed` or `scheduler.install_failed` result rather than claiming installation.
+
 ## Deployment and homepage contract
 
 - `DeployService.deploy()` runs clasp health first and performs no deployment or registration unless health passes.
@@ -175,3 +194,4 @@ Direct, calm, and specific. Errors identify the failed rule or command without e
 - How will schema version bumps propagate through skills and eval artifacts?
 - Which connector-specific resource ID namespaces beyond Google Sheets/Docs need canonicalization rules?
 - Live clasp authentication, deployment, homepage rendering, and Google authorization remain uncertified until exercised with a user-authorized account; synthetic adapters prove only local contracts.
+- Native scheduler installation remains uncertified on real macOS and Windows hosts; unit tests verify generated user-level commands and files without mutating a host scheduler.
