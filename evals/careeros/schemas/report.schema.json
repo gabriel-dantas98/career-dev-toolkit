@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://careeros.local/schemas/eval-report.schema.json",
+  "title": "CareerOS deterministic full-pipeline eval report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "stages",
+    "counts",
+    "ruleIds"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "stages": {
+      "$ref": "#/$defs/stages"
+    },
+    "counts": {
+      "$ref": "#/$defs/counts"
+    },
+    "ruleIds": {
+      "$ref": "#/$defs/ruleIds"
+    }
+  },
+  "$defs": {
+    "stageStatus": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "harvest",
+        "privacy",
+        "validation",
+        "encryptedStore",
+        "safeWrite",
+        "readBack",
+        "outputs",
+        "backgroundConsent"
+      ],
+      "properties": {
+        "harvest": {
+          "$ref": "#/$defs/stageStatus"
+        },
+        "privacy": {
+          "$ref": "#/$defs/stageStatus"
+        },
+        "validation": {
+          "$ref": "#/$defs/stageStatus"
+        },
+        "encryptedStore": {
+          "$ref": "#/$defs/stageStatus"
+        },
+        "safeWrite": {
+          "$ref": "#/$defs/stageStatus"
+        },
+        "readBack": {
+          "$ref": "#/$defs/stageStatus"
+        },
+        "outputs": {
+          "$ref": "#/$defs/stageStatus"
+        },
+        "backgroundConsent": {
+          "$ref": "#/$defs/stageStatus"
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceObservations",
+        "mergedRecords",
+        "persistedRecords",
+        "rejectedRecords",
+        "validationIssues",
+        "gatewayRequests",
+        "gatewayWrites",
+        "gatewayReadBacks",
+        "timelineCards",
+        "promotionWorkCards"
+      ],
+      "properties": {
+        "sourceObservations": {
+          "$ref": "#/$defs/count"
+        },
+        "mergedRecords": {
+          "$ref": "#/$defs/count"
+        },
+        "persistedRecords": {
+          "$ref": "#/$defs/count"
+        },
+        "rejectedRecords": {
+          "$ref": "#/$defs/count"
+        },
+        "validationIssues": {
+          "$ref": "#/$defs/count"
+        },
+        "gatewayRequests": {
+          "$ref": "#/$defs/count"
+        },
+        "gatewayWrites": {
+          "$ref": "#/$defs/count"
+        },
+        "gatewayReadBacks": {
+          "$ref": "#/$defs/count"
+        },
+        "timelineCards": {
+          "$ref": "#/$defs/count"
+        },
+        "promotionWorkCards": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ruleIds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "harvest",
+        "privacy",
+        "validation",
+        "encryptedStore",
+        "safeWrite",
+        "readBack",
+        "outputs",
+        "backgroundConsent"
+      ],
+      "properties": {
+        "harvest": {
+          "$ref": "#/$defs/ruleIdList"
+        },
+        "privacy": {
+          "$ref": "#/$defs/ruleIdList"
+        },
+        "validation": {
+          "$ref": "#/$defs/ruleIdList"
+        },
+        "encryptedStore": {
+          "$ref": "#/$defs/ruleIdList"
+        },
+        "safeWrite": {
+          "$ref": "#/$defs/ruleIdList"
+        },
+        "readBack": {
+          "$ref": "#/$defs/ruleIdList"
+        },
+        "outputs": {
+          "$ref": "#/$defs/ruleIdList"
+        },
+        "backgroundConsent": {
+          "$ref": "#/$defs/ruleIdList"
+        }
+      }
+    },
+    "ruleIdList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_.-]+$"
+      },
+      "uniqueItems": true
+    }
+  }
+}
