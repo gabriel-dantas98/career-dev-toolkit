@@ -2,7 +2,7 @@
 
 ## Goal
 
-Provide a shared, deterministic Python runtime that exposes one CLI entry point (`python -m careeros`) and typed domain contracts consumed by portable skills and later pipeline stages. Task 2 adds fail-closed privacy scanning, SQLCipher-backed encrypted persistence, versioned migrations, and scoped revocable consent. Task 3 adds Brazilian date parsing, taxonomy classification, deterministic deduplication, and integrity validators. Task 5 adds fixed-schema brag-sheet projection, browser-mode gateway calls, consent-adjacent RAW writes, and exact read-back reconciliation. Task 6 adds fail-closed deployment health, homepage and timeline contracts, evidence-bounded promotion packets, deterministic enrichment and leader review, and timeline preview parity. Task 7 adds consent-safe background execution with exclusive per-job locks, per-run idempotency keys, and native user-level scheduler adapters.
+Provide a shared, deterministic Python runtime that exposes one CLI entry point (`python -m careeros`) and typed domain contracts consumed by portable skills and later pipeline stages. Task 2 adds fail-closed privacy scanning, SQLCipher-backed encrypted persistence, versioned migrations, and scoped revocable consent. Task 3 adds Brazilian date parsing, taxonomy classification, deterministic deduplication, and integrity validators. Task 5 adds fixed-schema brag-sheet projection, browser-mode gateway calls, consent-adjacent RAW writes, and exact read-back reconciliation. Task 6 adds fail-closed deployment health, homepage and timeline contracts, evidence-bounded promotion packets, deterministic enrichment and leader review, and timeline preview parity. Task 7 adds consent-safe background execution with exclusive per-job locks, per-run idempotency keys, and native user-level scheduler adapters. Task 8 wires each portable skill to that shared runtime without weakening any existing privacy, consent, validation, persistence, reconciliation, deployment, or background-execution gate.
 
 ## Non-goals
 
@@ -35,6 +35,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Apps Script-compatible timeline preview mappings used only for deterministic parity comparison.
 - Named background jobs mapped to fixed projections, plus explicit commands and bounded integer minute intervals for native user-level schedules.
 - `run-job <job-id>` runtime configuration from `CAREEROS_WEB_APP_URL` and `CAREEROS_BRAGSHEET_ID`, with optional local path and sheet-name overrides.
+- JSON objects read from standard input for bounded capture, harvest, validation, write, packet, and foreground-sync inputs. An empty standard input selects the encrypted local record store where the command contract permits it.
+- CLI runtime configuration from `CAREEROS_DB_PATH`, `CAREEROS_WEB_APP_URL`, `CAREEROS_BRAGSHEET_ID`, `CAREEROS_BRAGSHEET_NAME`, `CAREEROS_BRAGSHEET_START_ROW`, `CAREEROS_LOCK_DIR`, and deployment adapter variables.
 
 ## Outputs
 
@@ -54,6 +56,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Evidence-policy findings, explicit unresolved enrichment results, deterministic leader-review findings, and field-level timeline parity differences.
 - `JobRunner.run(job_id)` results with `synced` or `already_running` status and one correlation/idempotency key per acquired run.
 - `python -m careeros run-job <job-id> [--json]` dispatch to the configured `JobRunner` with the standard `CommandResult` envelope.
+- Executable `capture-delivery`, `harvest-retrospective`, `validate-bragsheet-integrity`, `write-bragsheet-safe`, `deploy-careeros-timeline`, `build-promo-packet`, and `sync-careeros` CLI commands, each returning the same `CommandResult` JSON envelope as `version` and `run-job`.
 - Structured scheduler install/remove results for user-level launchd, Windows Task Scheduler, and systemd user timers.
 - `StoreUnavailable` and `ConsentDenied` terminal errors that identify the failed rule without leaking keys or sensitive input.
 
@@ -159,6 +162,18 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Revocation is terminal for the current operation and prevents the next external call; lock cleanup still occurs.
 - The `run-job` CLI validates the requested job, builds the local encrypted-store, projection, consent, sync, browser-gateway and lock dependencies from explicit local configuration, invokes `JobRunner.run`, and closes the store. Missing configuration and job failures return structured errors.
 
+## Portable skill command contract
+
+- Every portable skill command is registered explicitly; command smoke checks fail when any command returns `unknown_command`.
+- `capture-delivery` accepts one bounded `excerpt` or `thread`, scans it before parsing, uses `ThreadConnector` and non-persisting `HarvestService` execution, and emits the fixed 12-field brag-document shape. Missing Situation, Task, Action, and Result values begin with `Evidence gap:` and are never inferred.
+- `harvest-retrospective` accepts caller-supplied observations or bounded thread, GitHub, and Google connector requests. It scans caller content before opening a connector, requires connector grants at the existing adapter boundaries, persists only error-free harvests through `EncryptedRecordStore`, and returns only validation rule IDs, record IDs, and connector names.
+- `validate-bragsheet-integrity` validates caller-supplied records or encrypted-store records and emits rule ID, severity, and field. Any error-severity issue makes the command envelope unsuccessful.
+- `write-bragsheet-safe` validates and scans records before projection, requires destination consent through `SyncService`, and reports `synced` only after exact read-back. A post-write exception or mismatch returns `reconciliation_required`.
+- `deploy-careeros-timeline` uses configured clasp and URL-registry adapters through `DeployService`. Failed clasp health, missing deployment configuration, or output without exactly one real Google Apps Script `/exec` URL is terminal.
+- `build-promo-packet` validates caller-supplied or encrypted-store records and serializes only cards and summaries returned by `build_promo_packet`; it never fills missing work-card slots.
+- `sync-careeros` uses `JobRunner` when a background job is requested explicitly or configured by `CAREEROS_JOB_ID`; otherwise it follows the same validation, projection, consent, write, and read-back path as `write-bragsheet-safe`. Background revocation is terminal, and `already_running` is preserved.
+- Privacy findings serialize category and offsets only. Connector, keychain, store, consent, validation, gateway, and deployment failures use bounded error messages that do not include source excerpts, secrets, or provider payloads.
+
 ## Scheduler contract
 
 - `Scheduler.install(schedule)` and `Scheduler.remove(job_id)` use only native user-level facilities: launch agents under `~/Library/LaunchAgents` with the `gui/{uid}` launchd domain on macOS, Task Scheduler on Windows, and units under `~/.config/systemd/user` with `systemctl --user` on Linux.
@@ -199,7 +214,6 @@ Direct, calm, and specific. Errors identify the failed rule or command without e
 
 ## Open questions
 
-- Which additional commands register in Task 7+ without breaking the envelope contract?
 - How will schema version bumps propagate through skills and eval artifacts?
 - Which connector-specific resource ID namespaces beyond Google Sheets/Docs need canonicalization rules?
 - Live clasp authentication, deployment, homepage rendering, and Google authorization remain uncertified until exercised with a user-authorized account; synthetic adapters prove only local contracts.
