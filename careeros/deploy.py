@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -8,14 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 from careeros.outputs import BRAG_DOCUMENT_GID, build_homepage
-
-_EXEC_URL = re.compile(
-    r"(?<![A-Za-z0-9])"
-    r"https://script\.google\.com/"
-    r"(?:macros/s|a/macros/[A-Za-z0-9.-]+/s)/"
-    r"[A-Za-z0-9_-]+/exec"
-    r"(?![A-Za-z0-9_./?#-])"
-)
+from careeros.urls import google_exec_urls_in_text
 
 
 class DeploymentBlocked(RuntimeError):
@@ -110,7 +102,7 @@ class DeployService:
 
 
 def parse_web_app_url(output: str) -> str:
-    matches = tuple(dict.fromkeys(_EXEC_URL.findall(output)))
+    matches = google_exec_urls_in_text(output)
     if len(matches) != 1:
         raise DeploymentBlocked(
             "clasp deploy output must contain exactly one real Google /exec URL"

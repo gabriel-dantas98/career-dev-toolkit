@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from careeros.models import DeliveryRecord
+
+_TOKEN = re.compile(r"[a-z0-9]+")
+_CLAIM_STOPWORDS = frozenset(
+    {
+        "about",
+        "after",
+        "before",
+        "com",
+        "das",
+        "dos",
+        "for",
+        "from",
+        "para",
+        "that",
+        "the",
+        "this",
+        "uma",
+        "with",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -36,8 +58,12 @@ def leader_review(records: Sequence[DeliveryRecord]) -> LeaderReview:
                     message="Record has no supporting evidence link.",
                 )
             )
-        if "impact" in {tag.lower() for tag in record.tags} and record.result:
-            if not evidence_links:
+        if (
+            "impact" in {tag.lower() for tag in record.tags}
+            and record.result
+            and evidence_links
+        ):
+            if not _impact_claim_supported(record):
                 findings.append(
                     ReviewFinding(
                         rule_id="leader_review.impact.unsupported",
@@ -68,3 +94,27 @@ def leader_review(records: Sequence[DeliveryRecord]) -> LeaderReview:
         )
     )
     return LeaderReview(findings=ordered)
+
+
+def _impact_claim_supported(record: DeliveryRecord) -> bool:
+    claim_tokens = _meaningful_tokens(record.result or "")
+    if not claim_tokens:
+        return False
+    for evidence in record.evidence:
+        if not evidence.locator.strip() or not evidence.excerpt.strip():
+            continue
+        if claim_tokens.intersection(_meaningful_tokens(evidence.excerpt)):
+            return True
+    return False
+
+
+def _meaningful_tokens(value: str) -> set[str]:
+    normalized = unicodedata.normalize("NFKD", value.lower()).encode(
+        "ascii",
+        "ignore",
+    ).decode("ascii")
+    return {
+        token
+        for token in _TOKEN.findall(normalized)
+        if len(token) >= 4 and token not in _CLAIM_STOPWORDS
+    }

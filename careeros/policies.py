@@ -41,6 +41,14 @@ def validate_hero_metrics(
                     message="Hero metrics require at least one supporting evidence link.",
                 )
             )
+        if metric.kind.strip().lower() == "vanity":
+            findings.append(
+                PolicyFinding(
+                    rule_id="hero_metric.vanity.disallowed",
+                    metric_label=metric.label,
+                    message="Vanity metrics are not eligible for the hero surface.",
+                )
+            )
     return tuple(
         sorted(
             findings,
