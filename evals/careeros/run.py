@@ -352,6 +352,7 @@ def _collect_observations(
     )[0]
     overlapping_google = replace(
         google,
+        tags=("impact",),
         period="03/04/2026",
         jira_key="SYN-901",
         pr_locator="https://github.test/synthetic/repo/pull/901",
