@@ -21,6 +21,7 @@ from careeros.connectors.google import (
     GoogleConnector,
 )
 from careeros.connectors.thread import ThreadConnector
+from careeros import deploy as deploy_module
 from careeros import google_client, projections
 
 GATEWAY_HANDLER = (
@@ -201,6 +202,86 @@ def test_google_connector_bounded_search_invokes_gateway(
     assert fake_gateway.calls[0]["maxResults"] == 2  # type: ignore[attr-defined]
 
 
+def test_google_connector_extracts_kudos_sender_name_and_iso_month(
+    google_consent,
+) -> None:
+    class KudosGateway:
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            return {
+                "ok": True,
+                "data": {
+                    "messages": [
+                        {
+                            "id": "msg-kudos-synthetic",
+                            "subject": "Synthetic recognition",
+                            "from": (
+                                "Synthetic Sender "
+                                "<synthetic.sender@example.invalid>"
+                            ),
+                            "snippet": "Synthetic kudos evidence",
+                            "date": "2026-03-17T12:30:00Z",
+                        }
+                    ]
+                },
+            }
+
+    observations = GoogleConnector(
+        KudosGateway(),
+        consent=google_consent,
+    ).collect(
+        CollectRequest(
+            source="gmail",
+            action="gmail.search",
+            query="recognition",
+            time_window=("2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z"),
+            max_results=1,
+        )
+    )
+
+    assert len(observations) == 1
+    assert observations[0].record_type == "kudos"
+    assert observations[0].tags == ("kudos",)
+    assert observations[0].name == "Synthetic Sender"
+    assert observations[0].month == "2026-03"
+
+
+def test_google_connector_does_not_invent_kudos_name_or_month(
+    google_consent,
+) -> None:
+    class UnresolvedGateway:
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            return {
+                "ok": True,
+                "data": {
+                    "messages": [
+                        {
+                            "id": "msg-kudos-unresolved",
+                            "subject": "Synthetic recognition",
+                            "from": "synthetic.sender@example.invalid",
+                            "snippet": "Synthetic unresolved kudos evidence",
+                            "date": "not-an-iso-date",
+                        }
+                    ]
+                },
+            }
+
+    observation = GoogleConnector(
+        UnresolvedGateway(),
+        consent=google_consent,
+    ).collect(
+        CollectRequest(
+            source="gmail",
+            action="gmail.search",
+            query="recognition",
+            time_window=("2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z"),
+            max_results=1,
+        )
+    )[0]
+
+    assert observation.name is None
+    assert observation.month is None
+
+
 def test_google_connector_caps_gmail_snippet_to_bounded_excerpt(
     fake_gateway,
     google_consent,
@@ -359,8 +440,19 @@ def test_python_and_apps_script_gateway_bounds_stay_in_parity() -> None:
         numeric_constant("MAX_BRAGSHEET_COLUMNS")
         == projections.MAX_BRAGSHEET_COLUMNS
     )
+    assert numeric_constant("MAX_HOMEPAGE_ROWS") == getattr(
+        deploy_module,
+        "MAX_HOMEPAGE_ROWS",
+        None,
+    )
+    assert numeric_constant("MAX_HOMEPAGE_COLUMNS") == getattr(
+        deploy_module,
+        "MAX_HOMEPAGE_COLUMNS",
+        None,
+    )
     assert "var MAX_REQUEST_BYTES = 256 * 1024;" in source
     assert google_client.MAX_REQUEST_BYTES == 256 * 1024
+    assert "sheets.writeHomepage" in google_client.MUTATING_ACTIONS
 
 
 def test_thread_connector_rejects_sensitive_excerpt() -> None:

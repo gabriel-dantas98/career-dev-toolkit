@@ -26,7 +26,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Delivery and kudos records plus an external evidence mapping keyed by record ID.
 - Observations with namespaced `source_id`, Jira/PR/evidence keys, and provenance tuples.
 - Bounded `CollectRequest` payloads for thread excerpts, GitHub `gh api` queries, and Google gateway actions.
-- `HarvestRequest` observation batches normalized, deduplicated, validated, and persisted transactionally.
+- `HarvestRequest` observation batches normalized, deduplicated, enriched where evidence permits, validated, and persisted transactionally.
 - Delivery records projected to an explicit sheet ID, sheet name, start row, and fixed 12-column brag-sheet schema.
 - Apps Script web-app URLs ending in `/exec`, invoked by JSON POST through a persistent browser profile.
 - Clasp health and deploy output supplied through a narrow deployment adapter, plus an exact URL registrar.
@@ -49,7 +49,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - `HarvestService.run(request) -> HarvestResult` with merged records, validation issues, and persist status.
 - `serialize_period(value)`, immutable `BragSheetProjection` previews, and `SyncService.write_and_verify()`.
 - Gateway envelopes with exactly `ok`, `requestId`, `data`, `errors`, and `version`.
-- Deployment results that register the exact parsed `https://script.google.com/.../exec` URL and put that same URL in the homepage contract.
+- Deployment results that register the exact parsed `https://script.google.com/.../exec` URL, put that same URL in the homepage contract, and optionally write and verify that model through an injected gateway.
 - Homepage configuration whose default source is the brag-document gid `425749964`.
 - Promotion packets with 10–12 evidence-backed work cards when enough evidence exists, separate collapsed community and recognition summaries, an unresolved-work summary, and an explicit insufficient-evidence state otherwise.
 - Timeline cards whose face prefers linked impact, whose badges are canonical delivery types, and whose quarter ordering comes from the shared dates library; unresolved records remain explicit outside the card list.
@@ -117,7 +117,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Thread ingestion accepts only caller-provided excerpts up to `MAX_THREAD_EXCERPT` and runs `scan_sensitive` before parsing.
 - GitHub invokes `gh api` through argv (`shell=False`) with explicit `fields` and bounded `max_results`.
 - `ConsentService.require("connector", "connector:github", "read")` runs immediately before `gh api` execution.
-- Google allows only `calendar.search`, `gmail.search`, `drive.search`, `docs.read`, and `sheets.read`.
+- The read connector allows only `calendar.search`, `gmail.search`, `drive.search`, `docs.read`, and `sheets.read`; mutating gateway allowlists separately include `sheets.writeBragsheet` and `sheets.writeHomepage`.
 - Google search actions require a bounded `time_window` with finite ISO-8601 start/end (`start < end`) and `max_results`.
 - `sheets.read` requires a canonical sheet ID, explicit `sheet_name`, and finite A1 `range` of at most 500 cells. Connector payloads strip canonical `sheet:`/`doc:` prefixes into the gateway's `spreadsheetId`/`documentId` fields.
 - Gmail gateway queries reject grouping syntax and case-insensitive `OR` tokens delimited by whitespace or punctuation before the gateway appends its server-owned time window.
@@ -125,6 +125,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - `ConsentService.require("connector", "connector:google", action)` runs immediately before gateway invocation.
 - Connector observations use provider source timestamps when present and current UTC observation time otherwise; epoch placeholders are never fabricated.
 - Gmail snippets and excerpts use `bound_excerpt` (`MAX_THREAD_EXCERPT`) before observation creation.
+- Gmail observations preserve only a parsed sender display name and a `YYYY-MM` month derived from a valid provider ISO date for kudos harvesting. A bare address does not become a name, and an absent or invalid date does not fall back to the observation clock for the month.
 
 ## Harvest contract
 
@@ -132,6 +133,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Additional validators may extend the core gate but cannot disable `validate_records`.
 - Merged records preserve all provenance connectors and `merged_source_ids` on `RecordMetadata`.
 - Evidence refs carry a `connector` field for each contributing source.
+- Gmail observations are tagged `record_type: "kudos"` and passed through `enrich_kudos`. Name and month remain explicit typed fields through encrypted persistence.
+- A kudos record missing sender display name or provider-derived month emits `kudos.name.required` or `kudos.month.required`; any such error prevents the harvest transaction from persisting.
 - Production persistence uses `EncryptedRecordStore` over the SQLCipher connection with atomic commit/rollback.
 - `records.metadata_json` stores deterministic JSON for `RecordMetadata` (`jira_key`, `pr_status`, `narrative_status`, `epic_parent`, `provenance`, `merged_source_ids`, `evidence_locators`).
 - `evidence.connector` is persisted alongside locator, excerpt, and observed-at for read-back.
@@ -190,6 +193,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Deployment and homepage builders share one strict validator. It accepts only complete HTTPS URLs on `script.google.com` matching `/macros/s/{deployment}/exec` or `/a/macros/{domain}/s/{deployment}/exec`; deployment IDs, looser paths, queries, fragments, ports, credentials, and URLs embedded inside larger attacker-controlled tokens are rejected.
 - The exact parsed URL is registered and copied unchanged into the homepage `webAppUrl`.
 - Homepage source configuration defaults to `kind: "brag-document"` and gid `425749964`. The unrelated Sheets homepage gid `389581671` is never used as a fallback.
+- A configured homepage write targets only the canonical destination ID, exact sheet name `Homepage`, and exact RAW range `A1:B3`. Its deterministic matrix is `webAppUrl`, `source.kind`, and `source.gid`, with gid fixed to `425749964`.
+- `DeployService` registers the verified `/exec` URL before the optional homepage call. It rechecks destination consent for `write:homepage` immediately before `sheets.writeHomepage`, rechecks again before `sheets.readBack`, and succeeds only on exact 3-by-2 value-and-type equality.
 
 ## Promotion and timeline contract
 
@@ -205,7 +210,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 
 - Every hero metric requires at least one nonempty supporting evidence link. Metrics whose normalized `kind` is `vanity` are rejected even when linked; derived metrics are allowed only with links.
 - Event dates resolve in strict Calendar then Gmail order. If both are empty, the result is unresolved, records Calendar and Gmail as queried, and records Luma as unavailable—not queried.
-- Kudos enrichment requires both a name and month. Talk and external credential enrichment preserve every input evidence link and return explicit unresolved fields instead of guessed values.
+- Kudos enrichment requires both a sender display name and provider-derived month. Talk and external credential enrichment remain policy-only: they preserve every input evidence link and return explicit unresolved fields unless Google evidence already supplies the values.
 - Leader review emits sorted, stable findings about evidence and record quality. Missing evidence produces `leader_review.evidence.missing`; `leader_review.impact.unsupported` is reserved for an impact record that has a link but whose bounded evidence excerpt does not support a normalized result token. It has no promotion recommendation, level score, readiness verdict, or inferred impact.
 
 ## Voice/Tone

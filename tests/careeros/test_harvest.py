@@ -206,6 +206,80 @@ def test_harvest_persists_valid_records_transactionally() -> None:
     assert len(row["evidence"]) == 2
 
 
+def test_harvest_enriches_and_persists_complete_gmail_kudos() -> None:
+    store = memory_store()
+    result = HarvestService(store).run(
+        HarvestRequest(
+            observations=(
+                {
+                    "source_id": "gmail:msg-kudos-complete",
+                    "source_connector": "google",
+                    "source_locator": "gmail:msg-kudos-complete",
+                    "title": "Synthetic recognition",
+                    "record_type": "kudos",
+                    "name": "Synthetic Sender",
+                    "month": "2026-03",
+                    "tags": ("kudos",),
+                    "period": "2026-03",
+                    "provenance": ("google",),
+                    "excerpt": "Synthetic kudos evidence",
+                    "observed_at": "2026-03-17T12:30:00Z",
+                },
+            )
+        )
+    )
+
+    assert result.persisted is True
+    assert result.issues == ()
+    assert result.records[0].record_type == "kudos"
+    assert result.records[0].name == "Synthetic Sender"
+    assert result.records[0].month == "2026-03"
+    row = store.get_record("rec:gmail:msg-kudos-complete")
+    assert row is not None
+    assert row["record_type"] == "kudos"
+    assert row["name"] == "Synthetic Sender"
+    assert row["month"] == "2026-03"
+
+
+@pytest.mark.parametrize(
+    ("name", "month", "expected_rule"),
+    [
+        (None, "2026-03", "kudos.name.required"),
+        ("Synthetic Sender", None, "kudos.month.required"),
+    ],
+)
+def test_harvest_does_not_persist_unresolved_gmail_kudos(
+    name: str | None,
+    month: str | None,
+    expected_rule: str,
+) -> None:
+    store = memory_store()
+    result = HarvestService(store).run(
+        HarvestRequest(
+            observations=(
+                {
+                    "source_id": f"gmail:msg-{expected_rule}",
+                    "source_connector": "google",
+                    "source_locator": f"gmail:msg-{expected_rule}",
+                    "title": "Synthetic recognition",
+                    "record_type": "kudos",
+                    "name": name,
+                    "month": month,
+                    "tags": ("kudos",),
+                    "period": month,
+                    "provenance": ("google",),
+                    "excerpt": "Synthetic unresolved kudos evidence",
+                    "observed_at": "2026-03-17T12:30:00Z",
+                },
+            )
+        )
+    )
+
+    assert result.persisted is False
+    assert expected_rule in {issue.rule_id for issue in result.issues}
+    assert store.count_records() == 0
+
+
 def test_harvest_can_build_records_without_persisting() -> None:
     store = memory_store()
     request = HarvestRequest(
@@ -315,3 +389,34 @@ def test_harvest_encrypted_store_round_trip_preserves_provenance(store) -> None:
         "https://github.test/org/repo/pull/1",
         "thread:msg-9",
     }
+
+
+def test_encrypted_store_round_trip_preserves_kudos_fields(record_connection) -> None:
+    record_store = EncryptedRecordStore(record_connection)
+    result = HarvestService(record_store).run(
+        HarvestRequest(
+            observations=(
+                {
+                    "source_id": "gmail:msg-kudos-encrypted",
+                    "source_connector": "google",
+                    "source_locator": "gmail:msg-kudos-encrypted",
+                    "title": "Synthetic recognition",
+                    "record_type": "kudos",
+                    "name": "Synthetic Sender",
+                    "month": "2026-03",
+                    "tags": ("kudos",),
+                    "period": "2026-03",
+                    "provenance": ("google",),
+                    "excerpt": "Synthetic kudos evidence",
+                    "observed_at": "2026-03-17T12:30:00Z",
+                },
+            )
+        )
+    )
+
+    assert result.persisted is True
+    loaded = record_store.load_record("rec:gmail:msg-kudos-encrypted")
+    assert loaded is not None
+    assert loaded.record_type == "kudos"
+    assert loaded.name == "Synthetic Sender"
+    assert loaded.month == "2026-03"

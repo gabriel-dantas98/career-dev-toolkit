@@ -500,7 +500,11 @@ def test_browser_client_retries_transient_interstitial_with_finite_attempts() ->
     assert delays == [0.25]
 
 
-def test_browser_client_does_not_retry_ambiguous_write() -> None:
+@pytest.mark.parametrize(
+    "action",
+    ("sheets.writeBragsheet", "sheets.writeHomepage"),
+)
+def test_browser_client_does_not_retry_ambiguous_write(action: str) -> None:
     transport = SequenceTransport(
         [
             HttpResponse(status=503, text="Sorry, unable to open the file"),
@@ -520,7 +524,7 @@ def test_browser_client_does_not_retry_ambiguous_write() -> None:
     with pytest.raises(GatewayProtocolError, match="ambiguous"):
         client.invoke(
             {
-                "action": "sheets.writeBragsheet",
+                "action": action,
                 "idempotencyKey": "synthetic-write-key",
             }
         )

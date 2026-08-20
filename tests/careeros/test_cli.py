@@ -155,6 +155,53 @@ def test_harvest_blocks_sensitive_connector_output_before_persistence() -> None:
     assert synthetic_secret not in json.dumps(result.as_dict())
 
 
+def test_harvest_cli_persists_complete_gmail_kudos_from_connector() -> None:
+    store = memory_store()
+
+    class KudosConnector:
+        def collect(self, _request) -> tuple[Observation, ...]:
+            return (
+                Observation(
+                    source_id="gmail:msg-cli-kudos",
+                    source_connector="google",
+                    source_locator="gmail:msg-cli-kudos",
+                    title="Synthetic recognition",
+                    tags=("kudos",),
+                    period="2026-03",
+                    observed_at="2026-03-17T12:30:00Z",
+                    excerpt="Synthetic kudos evidence",
+                    provenance=("google",),
+                    record_type="kudos",
+                    name="Synthetic Sender",
+                    month="2026-03",
+                ),
+            )
+
+    result = handle_harvest_retrospective(
+        {
+            "google": {
+                "action": "gmail.search",
+                "query": "recognition",
+                "time_window": [
+                    "2026-03-01T00:00:00Z",
+                    "2026-04-01T00:00:00Z",
+                ],
+                "max_results": 1,
+            }
+        },
+        store=store,
+        google_connector=KudosConnector(),
+    )
+
+    assert result.ok is True
+    assert result.data["persisted"] is True
+    row = store.get_record("rec:gmail:msg-cli-kudos")
+    assert row is not None
+    assert row["record_type"] == "kudos"
+    assert row["name"] == "Synthetic Sender"
+    assert row["month"] == "2026-03"
+
+
 def test_capture_returns_fixed_draft_shape_with_explicit_star_gaps(
     run_cli: Callable[..., subprocess.CompletedProcess[str]],
 ) -> None:

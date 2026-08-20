@@ -69,6 +69,7 @@ test("gateway exposes only the promised fixed action allowlist", () => {
     "docs.read",
     "sheets.read",
     "sheets.writeBragsheet",
+    "sheets.writeHomepage",
     "sheets.readBack",
   ]);
 });
@@ -221,6 +222,52 @@ test("Gmail rejects grouping and token-delimited OR before GmailApp", () => {
   assert.equal(providerCalls, 0);
 });
 
+test("Gmail returns bounded synthetic From and ISO Date evidence", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+  deps.gmail = {
+    search() {
+      return [
+        {
+          getMessages() {
+            return [
+              {
+                getId: () => "msg-synthetic-kudos",
+                getSubject: () => "Synthetic recognition",
+                getFrom: () =>
+                  "Synthetic Sender <synthetic.sender@example.invalid>",
+                getDate: () => new Date("2026-03-17T12:30:00Z"),
+                getPlainBody: () => "Synthetic kudos evidence",
+              },
+            ];
+          },
+        },
+      ];
+    },
+  };
+
+  const response = gateway.handleRequestForTest(
+    request("gmail.search", {
+      query: "recognition",
+      timeMin: "2026-03-01T00:00:00Z",
+      timeMax: "2026-04-01T00:00:00Z",
+      maxResults: 1,
+    }),
+    deps,
+  );
+
+  assert.equal(response.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(response.data.messages)), [
+    {
+      id: "msg-synthetic-kudos",
+      subject: "Synthetic recognition",
+      from: "Synthetic Sender <synthetic.sender@example.invalid>",
+      date: "2026-03-17T12:30:00.000Z",
+      snippet: "Synthetic kudos evidence",
+    },
+  ]);
+});
+
 test("stale timestamps, invalid nonces, and replayed nonces fail closed", () => {
   const { gateway } = loadGateway();
   const deps = dependencies();
@@ -335,6 +382,97 @@ test("one full-window update addresses only the owned rows and A:L", () => {
   assert.deepEqual(ownedRows[0], ["first", ...Array(11).fill("")]);
   assert.deepEqual(ownedRows[1], ["second", ...Array(11).fill("")]);
   assert.deepEqual(ownedRows[2], Array(12).fill(""));
+});
+
+test("homepage writes only the deterministic model to Homepage A1:B3 as RAW", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+  const calls = [];
+  deps.sheets = {
+    update(resource, spreadsheetId, range, options) {
+      calls.push({ resource, spreadsheetId, range, options });
+      return { updatedRange: range };
+    },
+  };
+  const webAppUrl =
+    "https://script.google.com/macros/s/AKfycbSynthetic_123/exec";
+
+  const response = gateway.handleRequestForTest(
+    request("sheets.writeHomepage", {
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Homepage",
+      range: "A1:B3",
+      inputMode: "RAW",
+      homepage: {
+        webAppUrl,
+        source: { kind: "brag-document", gid: 425749964 },
+      },
+    }),
+    deps,
+  );
+
+  assert.equal(response.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    {
+      resource: {
+        values: [
+          ["webAppUrl", webAppUrl],
+          ["source.kind", "brag-document"],
+          ["source.gid", 425749964],
+        ],
+      },
+      spreadsheetId: "synthetic-sheet-id",
+      range: "'Homepage'!A1:B3",
+      options: { valueInputOption: "RAW" },
+    },
+  ]);
+});
+
+test("homepage rejects alternate gids, sheets, ranges, and input modes before write", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+  let providerCalls = 0;
+  deps.sheets = {
+    update() {
+      providerCalls += 1;
+    },
+  };
+  const base = {
+    spreadsheetId: "synthetic-sheet-id",
+    sheetName: "Homepage",
+    range: "A1:B3",
+    inputMode: "RAW",
+    homepage: {
+      webAppUrl:
+        "https://script.google.com/macros/s/AKfycbSynthetic_123/exec",
+      source: { kind: "brag-document", gid: 425749964 },
+    },
+  };
+  const invalid = [
+    {
+      ...base,
+      homepage: {
+        ...base.homepage,
+        source: { kind: "brag-document", gid: 389581671 },
+      },
+    },
+    { ...base, sheetName: "Not Homepage" },
+    { ...base, range: "A1:B4" },
+    { ...base, inputMode: "USER_ENTERED" },
+  ];
+
+  for (const [index, payload] of invalid.entries()) {
+    const response = gateway.handleRequestForTest(
+      request("sheets.writeHomepage", {
+        ...payload,
+        requestId: `homepage-invalid-${index}`,
+        nonce: `nonce-homepage-invalid-${index}-0001`,
+      }),
+      deps,
+    );
+    assert.equal(response.ok, false);
+  }
+  assert.equal(providerCalls, 0);
 });
 
 test("read-back uses UNFORMATTED_VALUE and pads the requested matrix", () => {

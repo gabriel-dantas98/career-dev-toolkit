@@ -69,6 +69,124 @@ def test_deploy_registers_exact_real_exec_url_and_homepage_uses_it() -> None:
     }
 
 
+def test_deploy_registers_then_consent_writes_and_reads_back_homepage() -> None:
+    events: list[object] = []
+
+    class OrderedClasp:
+        def health(self) -> bool:
+            events.append("health")
+            return True
+
+        def deploy(self) -> str:
+            events.append("deploy")
+            return f"Web app: {REAL_URL}"
+
+    class OrderedRegistry:
+        def register(self, web_app_url: str) -> None:
+            events.append(("register", web_app_url))
+
+    class RecordingConsent:
+        def require(
+            self,
+            grant_type: str,
+            resource_id: str,
+            scope: str,
+        ) -> None:
+            events.append(("consent", grant_type, resource_id, scope))
+
+    class HomepageGateway:
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            events.append(("gateway", payload))
+            if payload["action"] == "sheets.writeHomepage":
+                return {"ok": True, "data": {"range": "'Homepage'!A1:B3"}}
+            return {
+                "ok": True,
+                "data": {
+                    "values": [
+                        ["webAppUrl", REAL_URL],
+                        ["source.kind", "brag-document"],
+                        ["source.gid", BRAG_DOCUMENT_GID],
+                    ]
+                },
+            }
+
+    result = DeployService(
+        clasp=OrderedClasp(),
+        registry=OrderedRegistry(),
+        gateway=HomepageGateway(),
+        consent=RecordingConsent(),
+        homepage_destination_id="sheet:synthetic-homepage",
+    ).deploy()
+
+    assert result.homepage_written is True
+    assert events == [
+        "health",
+        "deploy",
+        ("register", REAL_URL),
+        (
+            "consent",
+            "destination",
+            "sheet:synthetic-homepage",
+            "write:homepage",
+        ),
+        (
+            "gateway",
+            {
+                "action": "sheets.writeHomepage",
+                "spreadsheetId": "synthetic-homepage",
+                "sheetName": "Homepage",
+                "range": "A1:B3",
+                "inputMode": "RAW",
+                "homepage": {
+                    "webAppUrl": REAL_URL,
+                    "source": {
+                        "kind": "brag-document",
+                        "gid": BRAG_DOCUMENT_GID,
+                    },
+                },
+            },
+        ),
+        (
+            "consent",
+            "destination",
+            "sheet:synthetic-homepage",
+            "write:homepage",
+        ),
+        (
+            "gateway",
+            {
+                "action": "sheets.readBack",
+                "spreadsheetId": "synthetic-homepage",
+                "sheetName": "Homepage",
+                "startRow": 1,
+                "rowCount": 3,
+                "columnCount": 2,
+            },
+        ),
+    ]
+
+
+def test_deploy_blocks_when_homepage_readback_does_not_match() -> None:
+    class HomepageGateway:
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            if payload["action"] == "sheets.writeHomepage":
+                return {"ok": True, "data": {}}
+            return {"ok": True, "data": {"values": [["different"]]}}
+
+    class AllowingConsent:
+        def require(self, grant_type: str, resource_id: str, scope: str) -> None:
+            pass
+
+    with pytest.raises(DeploymentBlocked, match="read-back"):
+        DeployService(
+            clasp=FakeClasp(healthy=True),
+            registry=RecordingRegistry(),
+            gateway=HomepageGateway(),
+            consent=AllowingConsent(),
+            homepage_destination_id="sheet:synthetic-homepage",
+        ).deploy()
+
+
 def test_file_deployment_registry_writes_private_exact_url(tmp_path) -> None:
     path = tmp_path / "state" / "deployment.json"
     registry = FileDeploymentRegistry(path)
