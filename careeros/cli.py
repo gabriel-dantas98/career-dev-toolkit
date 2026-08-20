@@ -7,7 +7,6 @@ from careeros import __version__
 from careeros.models import CommandResult
 
 SCHEMA_VERSION = 1
-KNOWN_COMMANDS = frozenset({"version"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,12 +46,6 @@ def handle_unknown(command: str) -> CommandResult:
     )
 
 
-def dispatch(command: str | None) -> CommandResult:
-    if command == "version":
-        return handle_version()
-    return handle_unknown(command or "")
-
-
 def emit_result(result: CommandResult, *, as_json: bool) -> int:
     if as_json:
         json.dump(result.as_dict(), sys.stdout)
@@ -82,9 +75,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         build_parser().print_help()
         return 0
 
-    if command not in KNOWN_COMMANDS:
+    if command == "version":
+        result = handle_version()
+    else:
         result = handle_unknown(command)
-        return emit_result(result, as_json=as_json)
 
-    result = dispatch(command)
     return emit_result(result, as_json=as_json)
