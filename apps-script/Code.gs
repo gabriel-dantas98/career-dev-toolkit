@@ -266,11 +266,10 @@ function sheetsWriteBragsheet_(request, dependencies) {
     ":" +
     columnLabel_(MAX_BRAGSHEET_COLUMNS) +
     (startRow + MAX_BRAGSHEET_ROWS - 1);
-  sheetsApi.clear({}, spreadsheetId, ownedRange);
   sheetsApi.update(
-    { values: request.values },
+    { values: padOwnedBragsheetMatrix_(request.values) },
     spreadsheetId,
-    range,
+    ownedRange,
     { valueInputOption: "RAW" }
   );
   return {
@@ -450,7 +449,7 @@ function validateGmailQuery_(value) {
   var query = validateQuery_(value, true);
   if (
     /[(){}\[\]]/.test(query) ||
-    /(^|\s)OR(?=\s|$)/i.test(query)
+    /(^|[^A-Za-z0-9_])OR(?=$|[^A-Za-z0-9_])/i.test(query)
   ) {
     throw new GatewayError(
       "INVALID_QUERY",
@@ -588,6 +587,25 @@ function validateCell_(value) {
       "Brag-sheet cells must be bounded scalar JSON values."
     );
   }
+}
+
+function padOwnedBragsheetMatrix_(values) {
+  var padded = [];
+  for (var rowIndex = 0; rowIndex < MAX_BRAGSHEET_ROWS; rowIndex += 1) {
+    var sourceRow = rowIndex < values.length ? values[rowIndex] : [];
+    var row = [];
+    for (
+      var columnIndex = 0;
+      columnIndex < MAX_BRAGSHEET_COLUMNS;
+      columnIndex += 1
+    ) {
+      row.push(
+        columnIndex < sourceRow.length ? sourceRow[columnIndex] : ""
+      );
+    }
+    padded.push(row);
+  }
+  return padded;
 }
 
 function normalizeReadbackMatrix_(values, rowCount, columnCount) {
@@ -729,13 +747,6 @@ function productionSpreadsheet_() {
 
 function productionSheets_() {
   return {
-    clear: function (resource, spreadsheetId, range) {
-      return Sheets.Spreadsheets.Values.clear(
-        resource,
-        spreadsheetId,
-        range
-      );
-    },
     get: function (spreadsheetId, range, options) {
       return Sheets.Spreadsheets.Values.get(
         spreadsheetId,

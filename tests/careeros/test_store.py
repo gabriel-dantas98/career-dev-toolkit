@@ -16,9 +16,17 @@ def test_store_refuses_driver_without_cipher(fake_keyring, tmp_path) -> None:
         )
 
 
-def test_store_opens_with_sqlcipher_and_applies_migrations(fake_keyring, tmp_path) -> None:
+def test_store_opens_with_sqlcipher_and_applies_migrations(
+    fake_keyring,
+    fake_sqlcipher_connect,
+    tmp_path,
+) -> None:
     config = StoreConfig(tmp_path / "career.db")
-    store = open_encrypted_store(config, fake_keyring)
+    store = open_encrypted_store(
+        config,
+        fake_keyring,
+        connect=fake_sqlcipher_connect,
+    )
 
     try:
         tables = {
@@ -43,12 +51,24 @@ def test_store_opens_with_sqlcipher_and_applies_migrations(fake_keyring, tmp_pat
         store.close()
 
 
-def test_store_reuses_key_from_keyring(fake_keyring, tmp_path) -> None:
+def test_store_reuses_key_from_keyring(
+    fake_keyring,
+    fake_sqlcipher_connect,
+    tmp_path,
+) -> None:
     config = StoreConfig(tmp_path / "career.db")
-    first = open_encrypted_store(config, fake_keyring)
+    first = open_encrypted_store(
+        config,
+        fake_keyring,
+        connect=fake_sqlcipher_connect,
+    )
     first.close()
 
-    second = open_encrypted_store(config, fake_keyring)
+    second = open_encrypted_store(
+        config,
+        fake_keyring,
+        connect=fake_sqlcipher_connect,
+    )
     second.close()
 
     assert fake_keyring.get_password("careeros", f"db-key:{config.path.resolve()}") is not None
@@ -69,9 +89,17 @@ def test_store_refuses_keychain_backend_failure(tmp_path) -> None:
         open_encrypted_store(StoreConfig(tmp_path / "career.db"), FailingKeyring())
 
 
-def test_store_refuses_migration_version_ahead_of_runtime(fake_keyring, tmp_path) -> None:
+def test_store_refuses_migration_version_ahead_of_runtime(
+    fake_keyring,
+    fake_sqlcipher_connect,
+    tmp_path,
+) -> None:
     config = StoreConfig(tmp_path / "career.db")
-    store = open_encrypted_store(config, fake_keyring)
+    store = open_encrypted_store(
+        config,
+        fake_keyring,
+        connect=fake_sqlcipher_connect,
+    )
     store.connection().execute(
         "INSERT INTO migrations (version, applied_at) VALUES (?, ?)",
         (4, "2026-01-01T00:00:00+00:00"),
@@ -80,7 +108,11 @@ def test_store_refuses_migration_version_ahead_of_runtime(fake_keyring, tmp_path
     store.close()
 
     with pytest.raises(StoreUnavailable, match="newer than runtime"):
-        open_encrypted_store(config, fake_keyring)
+        open_encrypted_store(
+            config,
+            fake_keyring,
+            connect=fake_sqlcipher_connect,
+        )
 
 
 def test_store_refuses_broad_existing_db_permissions(fake_keyring, tmp_path) -> None:
@@ -97,12 +129,20 @@ def test_store_refuses_broad_existing_db_permissions(fake_keyring, tmp_path) -> 
     assert db_path.stat().st_mode & (stat.S_IRGRP | stat.S_IROTH)
 
 
-def test_store_creates_new_db_with_user_only_permissions(fake_keyring, tmp_path) -> None:
+def test_store_creates_new_db_with_user_only_permissions(
+    fake_keyring,
+    fake_sqlcipher_connect,
+    tmp_path,
+) -> None:
     if os.name != "posix":
         pytest.skip("POSIX permission checks only")
 
     config = StoreConfig(tmp_path / "career.db")
-    store = open_encrypted_store(config, fake_keyring)
+    store = open_encrypted_store(
+        config,
+        fake_keyring,
+        connect=fake_sqlcipher_connect,
+    )
     store.close()
 
     mode = config.path.stat().st_mode

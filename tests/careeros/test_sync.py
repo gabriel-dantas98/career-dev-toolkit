@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
+import subprocess
+import time
+import urllib.request
 from typing import Any
 
 import pytest
@@ -126,11 +131,16 @@ class ExactGateway:
         raise AssertionError("unexpected action")
 
 
-def test_sync_service_preview_directly_makes_zero_gateway_calls(store) -> None:
-    gateway = ExactGateway()
+class ExplodingExternalCollaborator:
+    def __getattr__(self, name: str) -> object:
+        raise AssertionError(f"preview touched external collaborator: {name}")
+
+
+def test_sync_service_preview_does_not_touch_external_collaborators() -> None:
+    external = ExplodingExternalCollaborator()
     service = SyncService(
-        consent=OrderedConsent([]),  # type: ignore[arg-type]
-        run_store=EncryptedSyncRunStore(store.connection()),
+        consent=external,  # type: ignore[arg-type]
+        run_store=external,  # type: ignore[arg-type]
     )
 
     projection = service.preview(
@@ -140,7 +150,6 @@ def test_sync_service_preview_directly_makes_zero_gateway_calls(store) -> None:
     )
 
     assert projection.row_count == 1
-    assert gateway.calls == []
 
 
 def envelope(
@@ -304,6 +313,46 @@ class SequenceTransport:
         return self.responses.pop(0)
 
 
+class UrlLibTransport:
+    def post(
+        self,
+        url: str,
+        body: str,
+        headers: dict[str, str],
+        timeout_seconds: float,
+    ) -> HttpResponse:
+        request = urllib.request.Request(
+            url,
+            data=body.encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            return HttpResponse(
+                status=response.status,
+                text=response.read().decode("utf-8"),
+            )
+
+
+def unused_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def wait_for_fixture(port: int, process: subprocess.Popen[bytes]) -> None:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise AssertionError("gateway fixture exited before accepting requests")
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                return
+        except OSError:
+            time.sleep(0.05)
+    raise AssertionError("gateway fixture did not start within five seconds")
+
+
 def test_browser_client_posts_protocol_metadata_and_accepts_json_envelope() -> None:
     transport = SequenceTransport(
         [
@@ -342,6 +391,45 @@ def test_browser_client_posts_protocol_metadata_and_accepts_json_envelope() -> N
     assert transport.requests[0]["headers"] == {
         "Content-Type": "application/json",
     }
+
+
+def test_browser_client_exercises_loopback_fixture_url_path() -> None:
+    port = unused_loopback_port()
+    environment = {
+        **os.environ,
+        "CAREEROS_FIXTURE_PORT": str(port),
+        "CAREEROS_FIXTURE_NOW": "1787198400",
+    }
+    process = subprocess.Popen(
+        ["node", "tests/apps-script/fixture_server.mjs"],
+        cwd=os.fspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        env=environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        wait_for_fixture(port, process)
+        client = BrowserModeClient(
+            f"http://127.0.0.1:{port}/exec",
+            transport=UrlLibTransport(),
+            clock=lambda: 1_787_198_400,
+            nonce_factory=lambda: "loopback-fixture-nonce-0001",
+            request_id_factory=lambda: "loopback-fixture-request",
+            sleep=lambda _: None,
+        )
+
+        response = client.invoke({"action": "health"})
+
+        assert response == {
+            "ok": True,
+            "requestId": "loopback-fixture-request",
+            "data": {"status": "healthy"},
+            "errors": [],
+            "version": "1.0.0",
+        }
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
 
 
 def test_browser_client_retries_transient_interstitial_with_finite_attempts() -> None:

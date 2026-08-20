@@ -23,7 +23,7 @@ Provide one user-deployed Apps Script web app for bounded CareerOS Google reads 
 
 - An envelope `{ok, requestId, data, errors, version}` for every success and failure.
 - Minimal Calendar, Gmail, Drive, Docs, and Sheets fields for the fixed actions `health`, `calendar.search`, `gmail.search`, `drive.search`, `docs.read`, `sheets.read`, `sheets.writeBragsheet`, and `sheets.readBack`.
-- Brag-sheet writes restricted to an explicit spreadsheet ID, sheet name, start row, fixed projection width, finite row count, and `RAW` values. Each write clears only the owned 200-row by 12-column area before replacing its current rows, so shrinking projections cannot retain stale owned data.
+- Brag-sheet writes restricted to an explicit spreadsheet ID, sheet name, start row, fixed projection width, finite row count, and `RAW` values. The gateway pads the projection to 200 rows by 12 columns in memory and sends that full owned window through one `Values.update`, so shrinking projections clear stale owned data without a clear/update failure gap.
 - Exact read-back values over the same bounded projection range through Sheets v4 `Values.get` with `UNFORMATTED_VALUE`.
 
 ## Security and bounds
@@ -32,14 +32,14 @@ Provide one user-deployed Apps Script web app for bounded CareerOS Google reads 
 - Require timestamps within five minutes of server time and nonces matching a conservative identifier pattern. `CacheService` stores each accepted nonce before dispatch and rejects replay.
 - Cap search windows at 366 days, search results at 50, Docs text at 8,000 characters, sheet reads at 500 cells, brag-sheet writes at 200 rows by 12 columns, and request bodies at 256 KiB.
 - Require explicit resource IDs and sheet names. Parse A1 notation locally before calling Sheets, and reject open-ended, whole-row, whole-column, multi-area, or oversized ranges.
-- Reject Gmail grouping characters, braces, brackets, and bare `OR` before building the server-owned `after`/`before` window.
+- Reject Gmail grouping characters, braces, brackets, and case-insensitive `OR` tokens delimited by whitespace or punctuation before building the server-owned `after`/`before` window.
 - Return stable error codes and redacted messages. Never echo request bodies, authorization canaries, source queries, nonce values, or provider exception text.
 
 ## Sync contract
 
 - Python creates an immutable projection preview before external access.
 - Destination consent for `write:bragsheet` is rechecked immediately before `sheets.writeBragsheet`.
-- The write request always carries `inputMode: "RAW"`; ambiguous slash dates with both day and month at most 12 are prefixed with an apostrophe before they reach Google.
+- The write request always carries `inputMode: "RAW"`; ambiguous slash dates with both day and month at most 12 are prefixed with an apostrophe before they reach Google. One advanced Sheets `Values.update` writes the complete padded 200-by-12 owned window, while read-back remains scoped to the actual projected rows and columns.
 - Python calls `sheets.readBack` after a successful write. The gateway reads with Sheets v4 `Values.get` and `UNFORMATTED_VALUE`, pads API-trimmed trailing blanks to the requested dimensions, and Python compares the matrix exactly with the canonical intended matrix.
 - A mismatch or unverifiable response records the sync run as `reconciliation_required`; only an exact match records `synced`.
 - Projection-time evidence gaps are retained in the encrypted canonical store. Migration `003` adds deterministic `evidence_gaps` persistence for stores created by earlier tasks; reconciliation status continues to use the `sync_runs` table created by migration `001`.
@@ -50,5 +50,5 @@ Errors are direct, calm, and actionable. They identify a stable rule or action w
 
 ## Open questions
 
-- Live Apps Script OAuth scopes, deployment, and authenticated browser behavior require separate manual certification with a user-authorized Google account. The first certification check must RAW-write an ambiguous period and trailing blank, read it through `Values.get` with `UNFORMATTED_VALUE`, verify exact equality, then shrink the projection and confirm only stale cells inside `A:L` across the owned 200-row window were cleared.
+- Live Apps Script OAuth scopes, deployment, and authenticated browser behavior require separate manual certification with a user-authorized Google account. The first certification check must RAW-write an ambiguous period and trailing blank through one full-window `Values.update`, read the actual projection through `Values.get` with `UNFORMATTED_VALUE`, verify exact equality, then shrink the projection and confirm the padded update blanked stale cells only inside `A:L` across the owned 200-row window.
 - Deployment and homepage actions remain intentionally absent until Task 6 defines their exact inputs, limits, consent, and response fields.

@@ -98,7 +98,7 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Google allows only `calendar.search`, `gmail.search`, `drive.search`, `docs.read`, and `sheets.read`.
 - Google search actions require a bounded `time_window` with finite ISO-8601 start/end (`start < end`) and `max_results`.
 - `sheets.read` requires a canonical sheet ID, explicit `sheet_name`, and finite A1 `range` of at most 500 cells. Connector payloads strip canonical `sheet:`/`doc:` prefixes into the gateway's `spreadsheetId`/`documentId` fields.
-- Gmail gateway queries reject grouping syntax and bare case-insensitive `OR` before the gateway appends its server-owned time window.
+- Gmail gateway queries reject grouping syntax and case-insensitive `OR` tokens delimited by whitespace or punctuation before the gateway appends its server-owned time window.
 - Client-side `max_results` truncation applies to GitHub and Google search responses even when providers over-return.
 - `ConsentService.require("connector", "connector:google", action)` runs immediately before gateway invocation.
 - Connector observations use provider source timestamps when present and current UTC observation time otherwise; epoch placeholders are never fabricated.
@@ -119,10 +119,10 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 ## Projection and sync contract
 
 - The brag-sheet projection has at most 200 rows and exactly 12 fixed columns; destination IDs are canonical `sheet:{id}` values and sheet names/start rows are explicit.
-- Every projected value is written in one `RAW` operation. Period input is trimmed first; slash periods whose first and second components are both at most 12 receive a leading apostrophe before projection.
+- Every projected value is written in one `RAW` operation. The gateway pads the intended matrix to the complete owned 200-row by 12-column window in memory and sends one advanced Sheets `Values.update`. Period input is trimmed first; slash periods whose first and second components are both at most 12 receive a leading apostrophe before projection.
 - `SyncService.preview()` performs no external call. `ConsentService.require("destination", destination_id, "write:bragsheet")` runs immediately before `sheets.writeBragsheet`.
-- The gateway clears and replaces only the owned 200-row by 12-column projection area, preventing shrinking syncs from retaining stale rows without touching cells outside that area.
-- A successful write is followed by `sheets.readBack` over the same start row and dimensions using Sheets v4 `Values.get` with `UNFORMATTED_VALUE`. Matrix shape, value, and Python value type must match exactly.
+- The one padded update addresses only the owned 200-row by 12-column projection area, preventing shrinking syncs from retaining stale rows without touching cells outside that area or risking a clear/update failure gap.
+- A successful write is followed by `sheets.readBack` over the actual projected start row and dimensions, not the padded owned window, using Sheets v4 `Values.get` with `UNFORMATTED_VALUE`. Matrix shape, value, and Python value type must match exactly.
 - Any exception or mismatch after the write call records `reconciliation_required`; only exact read-back records `synced`. If recording reconciliation also fails, the original write/read-back exception remains primary and receives a diagnostic note.
 - The browser client adds a bounded request ID, timestamp, and nonce; posts JSON through an authenticated persistent Playwright profile; defaults to three attempts, permits a ceiling of five, retries only transient interstitial/status responses, and accepts only the exact gateway envelope.
 - Playwright is an optional `browser` install extra. The local synthetic transport and HTTP fixture do not require Google credentials and do not certify live OAuth behavior.

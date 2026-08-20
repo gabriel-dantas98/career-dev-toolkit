@@ -185,7 +185,7 @@ test("search actions require finite windows and bounded counts", () => {
   assert.equal(broadQuery.errors[0].code, "INVALID_QUERY");
 });
 
-test("Gmail rejects query grouping and bare OR before GmailApp", () => {
+test("Gmail rejects grouping and token-delimited OR before GmailApp", () => {
   const { gateway } = loadGateway();
   const deps = dependencies();
   let providerCalls = 0;
@@ -200,6 +200,7 @@ test("Gmail rejects query grouping and bare OR before GmailApp", () => {
     "{synthetic evidence}",
     "[synthetic evidence]",
     "synthetic oR after:0",
+    "synthetic,OR,after:0",
   ];
 
   for (const [index, query] of adversarialQueries.entries()) {
@@ -250,23 +251,13 @@ test("stale timestamps, invalid nonces, and replayed nonces fail closed", () => 
   assert.equal(second.errors[0].code, "NONCE_REPLAYED");
 });
 
-test("brag-sheet writes require RAW mode and use the bounded Sheets API update", () => {
+test("brag-sheet writes use one full-owned-window RAW update", () => {
   const { gateway } = loadGateway();
   const deps = dependencies();
   const calls = [];
   deps.sheets = {
-    clear(resource, spreadsheetId, range) {
-      calls.push({ action: "clear", resource, spreadsheetId, range });
-      return {};
-    },
     update(resource, spreadsheetId, range, options) {
-      calls.push({
-        action: "update",
-        resource,
-        spreadsheetId,
-        range,
-        options,
-      });
+      calls.push({ resource, spreadsheetId, range, options });
       return { updatedRows: resource.values.length };
     },
   };
@@ -295,16 +286,61 @@ test("brag-sheet writes require RAW mode and use the bounded Sheets API update",
     deps,
   );
   assert.equal(accepted.ok, true);
-  assert.equal(calls.length, 2);
-  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), {
-    action: "clear",
-    resource: {},
-    spreadsheetId: "synthetic-sheet-id",
-    range: "'Brag Sheet'!A2:L201",
-  });
-  assert.equal(calls[1].action, "update");
-  assert.equal(calls[1].options.valueInputOption, "RAW");
-  assert.equal(calls[1].range, "'Brag Sheet'!A2:B2");
+  assert.equal(calls.length, 1);
+  const call = JSON.parse(JSON.stringify(calls[0]));
+  assert.equal(call.spreadsheetId, "synthetic-sheet-id");
+  assert.equal(call.range, "'Brag Sheet'!A2:L201");
+  assert.deepEqual(call.options, { valueInputOption: "RAW" });
+  assert.equal(call.resource.values.length, 200);
+  assert.equal(call.resource.values[0].length, 12);
+  assert.deepEqual(call.resource.values[0].slice(0, 2), [
+    "delivery:1",
+    "'03/04/2026",
+  ]);
+  assert.deepEqual(call.resource.values[0].slice(2), Array(10).fill(""));
+  assert.deepEqual(call.resource.values[1], Array(12).fill(""));
+});
+
+test("one full-window update addresses only the owned rows and A:L", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+  const addressedRanges = [];
+  const state = {
+    ownedRows: Array(200).fill(undefined),
+    outsideColumn: "keep-M2",
+    outsideRow: "keep-A202",
+  };
+  deps.sheets = {
+    update(resource, _spreadsheetId, range, options) {
+      addressedRanges.push(range);
+      assert.deepEqual(JSON.parse(JSON.stringify(options)), {
+        valueInputOption: "RAW",
+      });
+      state.ownedRows = resource.values.map((row) => Array.from(row));
+      return { updatedRange: range };
+    },
+  };
+
+  const response = gateway.handleRequestForTest(
+    request("sheets.writeBragsheet", {
+      nonce: "nonce-owned-window-0001",
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Brag Sheet",
+      startRow: 2,
+      inputMode: "RAW",
+      values: [["first"], ["second"]],
+    }),
+    deps,
+  );
+
+  assert.equal(response.ok, true);
+  assert.deepEqual(addressedRanges, ["'Brag Sheet'!A2:L201"]);
+  assert.equal(state.ownedRows.length, 200);
+  assert.deepEqual(state.ownedRows[0], ["first", ...Array(11).fill("")]);
+  assert.deepEqual(state.ownedRows[1], ["second", ...Array(11).fill("")]);
+  assert.deepEqual(state.ownedRows[2], Array(12).fill(""));
+  assert.equal(state.outsideColumn, "keep-M2");
+  assert.equal(state.outsideRow, "keep-A202");
 });
 
 test("read-back uses UNFORMATTED_VALUE and pads the requested matrix", () => {
@@ -351,16 +387,10 @@ test("a shrinking write clears stale owned rows without expanding ownership", ()
     outsideRow: "keep-A202",
   };
   deps.sheets = {
-    clear(_resource, _spreadsheetId, range) {
-      assert.equal(range, "'Brag Sheet'!A2:L201");
-      state.ownedRows.fill(undefined);
-      return {};
-    },
     update(resource, _spreadsheetId, range, options) {
+      assert.equal(range, "'Brag Sheet'!A2:L201");
       assert.equal(options.valueInputOption, "RAW");
-      resource.values.forEach((row, index) => {
-        state.ownedRows[index] = Array.from(row);
-      });
+      state.ownedRows = resource.values.map((row) => Array.from(row));
       return { updatedRange: range };
     },
   };
@@ -391,8 +421,11 @@ test("a shrinking write clears stale owned rows without expanding ownership", ()
 
   assert.equal(first.ok, true);
   assert.equal(second.ok, true);
-  assert.deepEqual(state.ownedRows[0], ["replacement"]);
-  assert.equal(state.ownedRows[1], undefined);
+  assert.deepEqual(state.ownedRows[0], [
+    "replacement",
+    ...Array(11).fill(""),
+  ]);
+  assert.deepEqual(state.ownedRows[1], Array(12).fill(""));
   assert.equal(state.outsideColumn, "keep-M2");
   assert.equal(state.outsideRow, "keep-A202");
 });
@@ -562,5 +595,6 @@ test("gateway has no arbitrary evaluation or property-based action dispatch", ()
     /valueRenderOption:\s*"UNFORMATTED_VALUE"/,
   );
   assert.match(source, /Sheets\.Spreadsheets\.Values\.get/);
+  assert.doesNotMatch(source, /Sheets\.Spreadsheets\.Values\.clear/);
 });
 
