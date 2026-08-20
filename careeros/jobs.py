@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from careeros.sync import SyncGateway, SyncRun
 
 JOB_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 WRITE_ACTIONS = frozenset({"sheets.writeBragsheet"})
+STALE_MALFORMED_LOCK_SECONDS = 60 * 60
 
 
 class UnknownJob(ValueError):
@@ -77,7 +79,10 @@ class _ExclusiveJobLock:
         if self._create():
             return True
         owner_pid = self._read_owner_pid()
-        if owner_pid is None or self._pid_is_alive(owner_pid):
+        if owner_pid is None:
+            if not self._malformed_lock_is_stale():
+                return False
+        elif self._pid_is_alive(owner_pid):
             return False
         try:
             self._path.unlink()
@@ -110,6 +115,13 @@ class _ExclusiveJobLock:
             return None
         pid = int(value)
         return pid if pid > 0 else None
+
+    def _malformed_lock_is_stale(self) -> bool:
+        try:
+            age_seconds = time.time() - self._path.stat().st_mtime
+        except OSError:
+            return False
+        return age_seconds >= STALE_MALFORMED_LOCK_SECONDS
 
     def release(self) -> None:
         descriptor = self._descriptor
