@@ -1,6 +1,14 @@
+import json
+import stat
+
 import pytest
 
-from careeros.deploy import DeploymentBlocked, DeployService, parse_web_app_url
+from careeros.deploy import (
+    DeploymentBlocked,
+    DeployService,
+    FileDeploymentRegistry,
+    parse_web_app_url,
+)
 from careeros.outputs import BRAG_DOCUMENT_GID, build_homepage
 from careeros.urls import validate_google_exec_url
 
@@ -59,6 +67,16 @@ def test_deploy_registers_exact_real_exec_url_and_homepage_uses_it() -> None:
         "kind": "brag-document",
         "gid": BRAG_DOCUMENT_GID,
     }
+
+
+def test_file_deployment_registry_writes_private_exact_url(tmp_path) -> None:
+    path = tmp_path / "state" / "deployment.json"
+    registry = FileDeploymentRegistry(path)
+
+    registry.register(REAL_URL)
+
+    assert json.loads(path.read_text()) == {"webAppUrl": REAL_URL}
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 @pytest.mark.parametrize(

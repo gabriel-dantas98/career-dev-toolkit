@@ -19,6 +19,7 @@ Validator = Callable[
 @dataclass(frozen=True)
 class HarvestRequest:
     observations: tuple[Mapping[str, object], ...]
+    persist: bool = True
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ class HarvestService:
         has_errors = any(issue.severity == "error" for issue in issues)
         persisted = False
         final_records = records
-        if not has_errors and records:
+        if request.persist and not has_errors and records:
             final_records = [
                 self._normalize_record(record) for record in records
             ]
