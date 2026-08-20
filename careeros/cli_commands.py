@@ -181,7 +181,13 @@ def handle_validate_bragsheet_integrity(
     blocked = privacy_result(command, records)
     if blocked is not None:
         return blocked
-    issues = validate_records(records, {})
+    normalized_records = tuple(
+        record
+        if isinstance(record, DeliveryRecord) or record.get("record_type") == "kudos"
+        else record_from_mapping(record)
+        for record in records
+    )
+    issues = validate_records(normalized_records, {})
     has_errors = _has_error_issues(issues)
     return CommandResult(
         ok=not has_errors,
