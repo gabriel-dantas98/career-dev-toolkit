@@ -88,16 +88,21 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - `Connector.collect(request) -> tuple[Observation, ...]` is the shared protocol for bounded source collection.
 - Thread ingestion accepts only caller-provided excerpts up to `MAX_THREAD_EXCERPT` and runs `scan_sensitive` before parsing.
 - GitHub invokes `gh api` through argv (`shell=False`) with explicit `fields` and bounded `max_results`.
+- `ConsentService.require("connector", "connector:github", "read")` runs immediately before `gh api` execution.
 - Google allows only `calendar.search`, `gmail.search`, `drive.search`, `docs.read`, and `sheets.read`.
-- Google search actions require a bounded `time_window` and `max_results`; read actions require an explicit `resource_id`.
+- Google search actions require a bounded `time_window` with finite ISO-8601 start/end (`start < end`) and `max_results`.
+- Client-side `max_results` truncation applies to GitHub and Google search responses even when providers over-return.
 - `ConsentService.require("connector", "connector:google", action)` runs immediately before gateway invocation.
+- Connector observations use provider source timestamps when present and current UTC observation time otherwise; epoch placeholders are never fabricated.
 
 ## Harvest contract
 
-- `HarvestService.run` normalizes observations, applies transitive `deduplicate`, runs validators, and persists only when no error-severity issues remain.
+- `HarvestService.run` normalizes observations, applies transitive `deduplicate`, always runs `validate_records`, and persists only when no error-severity issues remain.
+- Additional validators may extend the core gate but cannot disable `validate_records`.
 - Merged records preserve all provenance connectors and `merged_source_ids` on `RecordMetadata`.
 - Evidence refs carry a `connector` field for each contributing source.
-- Persistence is transactional within the store adapter; partial writes roll back on failure.
+- Production persistence uses `EncryptedRecordStore` over the SQLCipher connection with atomic commit/rollback.
+- `MemoryStore` remains test-only.
 
 ## Voice/Tone
 

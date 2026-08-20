@@ -4,8 +4,8 @@ import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
+from careeros.connectors.timestamps import utc_now_iso
 from careeros.dedup import deduplicate
 from careeros.models import DeliveryRecord, EvidenceRef, RecordMetadata, ValidationIssue
 from careeros.taxonomy import apply_confidence_cap, classify_context, normalize_delivery_prefix
@@ -67,10 +67,12 @@ class HarvestService:
         self,
         store: object,
         *,
-        validators: Sequence[Validator] | None = None,
+        extra_validators: Sequence[Validator] | None = None,
     ) -> None:
         self._store = store
-        self._validators = list(validators or [])
+        self._validators: list[Validator] = [validate_records]
+        if extra_validators:
+            self._validators.extend(extra_validators)
 
     def run(self, request: HarvestRequest) -> HarvestResult:
         raw_observations = [dict(observation) for observation in request.observations]
@@ -193,7 +195,7 @@ class HarvestService:
             evidence=evidence,
             evidence_gaps=(),
             content_fingerprint=_content_fingerprint(merged),
-            observed_at=str(merged.get("observed_at", _utc_now_iso())),
+            observed_at=str(merged.get("observed_at", utc_now_iso())),
             metadata=metadata,
         )
         capped = apply_confidence_cap(record)
@@ -264,7 +266,7 @@ class HarvestService:
                             locator=str(observation.get("source_locator", "")),
                             excerpt=str(observation.get("excerpt", "")),
                             observed_at=str(
-                                observation.get("observed_at", "1970-01-01T00:00:00Z")
+                                observation.get("observed_at", utc_now_iso())
                             ),
                             connector=connector,
                         )
@@ -283,6 +285,3 @@ def _content_fingerprint(merged: Mapping[str, object]) -> str:
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     return digest[:16]
 
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()

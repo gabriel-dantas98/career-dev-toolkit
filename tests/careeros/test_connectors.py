@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from typing import Any
 
@@ -11,7 +12,7 @@ from careeros.connectors.base import (
     ConnectorRequestInvalid,
     PrivacyBlocked,
 )
-from careeros.connectors.github import GitHubConnector
+from careeros.connectors.github import GITHUB_CONNECTOR_RESOURCE, GitHubConnector
 from careeros.connectors.google import (
     GOOGLE_ALLOWED_ACTIONS,
     GoogleConnector,
@@ -34,6 +35,11 @@ def allow_google(consent: ConsentService) -> ConsentService:
     return consent
 
 
+def allow_github(consent: ConsentService) -> ConsentService:
+    consent.grant("connector", GITHUB_CONNECTOR_RESOURCE, ("read",))
+    return consent
+
+
 @pytest.fixture
 def fake_gateway() -> list[dict[str, Any]]:
     calls: list[dict[str, Any]] = []
@@ -48,11 +54,12 @@ def fake_gateway() -> list[dict[str, Any]]:
                     "data": {
                         "messages": [
                             {
-                                "id": "msg-synthetic-1",
-                                "subject": "Recognition note",
-                                "snippet": "Synthetic kudos excerpt",
+                                "id": f"msg-synthetic-{index}",
+                                "subject": f"Recognition note {index}",
+                                "snippet": f"Synthetic kudos excerpt {index}",
                                 "date": "2026-01-10T00:00:00Z",
                             }
+                            for index in range(1, 6)
                         ]
                     },
                 }
@@ -76,6 +83,11 @@ def google_consent(store) -> ConsentService:
     return allow_google(ConsentService(store))
 
 
+@pytest.fixture
+def github_consent(store) -> ConsentService:
+    return allow_github(ConsentService(store))
+
+
 def test_google_connector_rejects_unbounded_mail_query(
     fake_gateway,
     google_consent,
@@ -91,6 +103,40 @@ def test_google_connector_rejects_unbounded_mail_query(
         )
 
 
+def test_google_connector_rejects_invalid_time_window(
+    fake_gateway,
+    google_consent,
+) -> None:
+    connector = GoogleConnector(fake_gateway, consent=google_consent)
+    with pytest.raises(ConnectorRequestInvalid, match="ISO-8601"):
+        connector.collect(
+            CollectRequest(
+                source="gmail",
+                action="gmail.search",
+                query="recognition",
+                time_window=("not-a-date", "2026-01-31T00:00:00Z"),
+                max_results=10,
+            )
+        )
+
+
+def test_google_connector_rejects_inverted_time_window(
+    fake_gateway,
+    google_consent,
+) -> None:
+    connector = GoogleConnector(fake_gateway, consent=google_consent)
+    with pytest.raises(ConnectorRequestInvalid, match="before end"):
+        connector.collect(
+            CollectRequest(
+                source="gmail",
+                action="gmail.search",
+                query="recognition",
+                time_window=("2026-02-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+                max_results=10,
+            )
+        )
+
+
 def test_google_connector_rejects_non_allowlisted_action(
     fake_gateway,
     google_consent,
@@ -102,7 +148,7 @@ def test_google_connector_rejects_non_allowlisted_action(
                 source="gmail",
                 action="gmail.send",
                 query="recognition",
-                time_window=("2026-01-01", "2026-01-31"),
+                time_window=("2026-01-01T00:00:00Z", "2026-01-31T00:00:00Z"),
                 max_results=10,
             )
         )
@@ -119,7 +165,7 @@ def test_google_connector_checks_consent_before_gateway(
                 source="gmail",
                 action="gmail.search",
                 query="recognition",
-                time_window=("2026-01-01", "2026-01-31"),
+                time_window=("2026-01-01T00:00:00Z", "2026-01-31T00:00:00Z"),
                 max_results=10,
             )
         )
@@ -136,14 +182,14 @@ def test_google_connector_bounded_search_invokes_gateway(
             source="gmail",
             action="gmail.search",
             query="recognition",
-            time_window=("2026-01-01", "2026-01-31"),
-            max_results=5,
+            time_window=("2026-01-01T00:00:00Z", "2026-01-31T00:00:00Z"),
+            max_results=2,
         )
     )
-    assert len(observations) == 1
+    assert len(observations) == 2
     assert observations[0].source_connector == "google"
     assert fake_gateway.calls[0]["action"] == "gmail.search"  # type: ignore[attr-defined]
-    assert fake_gateway.calls[0]["maxResults"] == 5  # type: ignore[attr-defined]
+    assert fake_gateway.calls[0]["maxResults"] == 2  # type: ignore[attr-defined]
 
 
 def test_google_allowed_actions_are_fixed() -> None:
@@ -200,28 +246,33 @@ def test_thread_connector_parses_bounded_excerpt() -> None:
     assert observations[0].source_id == "thread:thread-synthetic-1"
     assert observations[0].jira_key == "SYN-THREAD-1"
     assert observations[0].provenance == ("thread",)
+    assert "1970-01-01" not in observations[0].observed_at
 
 
-def test_github_connector_invokes_gh_as_argv(monkeypatch) -> None:
+def test_github_connector_invokes_gh_as_argv(store, github_consent) -> None:
     captured: dict[str, Any] = {}
 
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured["argv"] = argv
         captured["shell"] = kwargs.get("shell")
+        captured["call_count"] = captured.get("call_count", 0) + 1
         return subprocess.CompletedProcess(
             argv,
             0,
-            stdout='[{"number":1,"title":"[Impact] PR title","state":"merged","html_url":"https://github.test/org/repo/pull/1"}]',
+            stdout=(
+                '[{"number":1,"title":"[Impact] PR title","state":"merged",'
+                '"html_url":"https://github.test/org/repo/pull/1",'
+                '"updated_at":"2026-01-12T00:00:00Z"}]'
+            ),
             stderr="",
         )
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    connector = GitHubConnector()
+    connector = GitHubConnector(consent=github_consent, runner=fake_run)
     observations = connector.collect(
         CollectRequest(
             source="github",
             endpoint="repos/synthetic-org/synthetic-repo/pulls",
-            fields="number,title,state,html_url",
+            fields="number,title,state,html_url,updated_at",
             max_results=10,
         )
     )
@@ -231,10 +282,84 @@ def test_github_connector_invokes_gh_as_argv(monkeypatch) -> None:
     assert "--jq" in captured["argv"] or "-f" in " ".join(captured["argv"])
     assert len(observations) == 1
     assert observations[0].source_connector == "github"
+    assert observations[0].observed_at == "2026-01-12T00:00:00Z"
 
 
-def test_github_connector_rejects_unbounded_request() -> None:
-    connector = GitHubConnector()
+def test_github_connector_checks_consent_before_runner(store) -> None:
+    call_count = 0
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal call_count
+        call_count += 1
+        return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+
+    connector = GitHubConnector(consent=ConsentService(store), runner=fake_run)
+    with pytest.raises(ConsentDenied):
+        connector.collect(
+            CollectRequest(
+                source="github",
+                endpoint="repos/synthetic-org/synthetic-repo/pulls",
+                fields="number,title",
+                max_results=10,
+            )
+        )
+    assert call_count == 0
+
+
+def test_github_connector_revocation_blocks_with_zero_runner_calls(store, github_consent) -> None:
+    call_count = 0
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal call_count
+        call_count += 1
+        return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+
+    github_consent.revoke("connector", GITHUB_CONNECTOR_RESOURCE)
+    connector = GitHubConnector(consent=github_consent, runner=fake_run)
+    with pytest.raises(ConsentDenied):
+        connector.collect(
+            CollectRequest(
+                source="github",
+                endpoint="repos/synthetic-org/synthetic-repo/pulls",
+                fields="number,title",
+                max_results=10,
+            )
+        )
+    assert call_count == 0
+
+
+def test_github_connector_truncates_over_returned_results(store, github_consent) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        payload = [
+            {
+                "number": index,
+                "title": f"PR {index}",
+                "state": "open",
+                "html_url": f"https://github.test/org/repo/pull/{index}",
+            }
+            for index in range(1, 6)
+        ]
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+
+    connector = GitHubConnector(consent=github_consent, runner=fake_run)
+    observations = connector.collect(
+        CollectRequest(
+            source="github",
+            endpoint="repos/synthetic-org/synthetic-repo/pulls",
+            fields="number,title,state,html_url",
+            max_results=2,
+        )
+    )
+    assert len(observations) == 2
+
+
+def test_github_connector_rejects_unbounded_request(github_consent) -> None:
+    connector = GitHubConnector(consent=github_consent)
     with pytest.raises(ConnectorRequestInvalid, match="max_results"):
         connector.collect(
             CollectRequest(
@@ -245,8 +370,8 @@ def test_github_connector_rejects_unbounded_request() -> None:
         )
 
 
-def test_github_connector_requires_explicit_fields() -> None:
-    connector = GitHubConnector()
+def test_github_connector_requires_explicit_fields(github_consent) -> None:
+    connector = GitHubConnector(consent=github_consent)
     with pytest.raises(ConnectorRequestInvalid, match="fields"):
         connector.collect(
             CollectRequest(

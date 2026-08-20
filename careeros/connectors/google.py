@@ -10,7 +10,9 @@ from careeros.connectors.base import (
     CollectRequest,
     ConnectorRequestInvalid,
     Observation,
+    validate_time_window,
 )
+from careeros.connectors.timestamps import observation_timestamp, utc_now_iso
 
 GOOGLE_ALLOWED_ACTIONS = frozenset(
     {
@@ -41,12 +43,14 @@ class GoogleConnector:
         if action not in GOOGLE_ALLOWED_ACTIONS:
             raise ConnectorRequestInvalid("Google action is not on the allowlist")
 
+        max_results = request.max_results
         if action in GOOGLE_SEARCH_ACTIONS:
             if request.time_window is None:
                 raise ConnectorRequestInvalid("Google search requires a bounded time window")
-            if request.max_results is None:
+            validate_time_window(request.time_window)
+            if max_results is None:
                 raise ConnectorRequestInvalid("Google search requires max_results")
-            if request.max_results < 1 or request.max_results > MAX_GOOGLE_RESULTS:
+            if max_results < 1 or max_results > MAX_GOOGLE_RESULTS:
                 raise ConnectorRequestInvalid(
                     f"Google max_results must be between 1 and {MAX_GOOGLE_RESULTS}"
                 )
@@ -59,7 +63,7 @@ class GoogleConnector:
 
         payload = _build_payload(request, action)
         response = self._gateway.invoke(payload)
-        return _observations_from_response(action, response)
+        return _observations_from_response(action, response, max_results=max_results)
 
 
 def _build_payload(request: CollectRequest, action: str) -> dict[str, object]:
@@ -78,6 +82,8 @@ def _build_payload(request: CollectRequest, action: str) -> dict[str, object]:
 def _observations_from_response(
     action: str,
     response: Mapping[str, object],
+    *,
+    max_results: int | None,
 ) -> tuple[Observation, ...]:
     if not response.get("ok", False):
         return ()
@@ -90,19 +96,22 @@ def _observations_from_response(
         messages = data.get("messages")
         if not isinstance(messages, list):
             return ()
-        return tuple(_gmail_observation(item) for item in messages if isinstance(item, Mapping))
+        bounded = messages if max_results is None else messages[:max_results]
+        return tuple(_gmail_observation(item) for item in bounded if isinstance(item, Mapping))
 
     if action == "calendar.search":
         events = data.get("events")
         if not isinstance(events, list):
             return ()
-        return tuple(_calendar_observation(item) for item in events if isinstance(item, Mapping))
+        bounded = events if max_results is None else events[:max_results]
+        return tuple(_calendar_observation(item) for item in bounded if isinstance(item, Mapping))
 
     if action == "drive.search":
         files = data.get("files")
         if not isinstance(files, list):
             return ()
-        return tuple(_drive_observation(item) for item in files if isinstance(item, Mapping))
+        bounded = files if max_results is None else files[:max_results]
+        return tuple(_drive_observation(item) for item in bounded if isinstance(item, Mapping))
 
     if action == "docs.read":
         content = str(data.get("content", ""))
@@ -115,7 +124,7 @@ def _observations_from_response(
                 title="Google Doc excerpt",
                 tags=("delivery",),
                 period=None,
-                observed_at="1970-01-01T00:00:00Z",
+                observed_at=utc_now_iso(),
                 excerpt=content[:MAX_GOOGLE_RESULTS * 100],
                 provenance=("google",),
             ),
@@ -133,7 +142,7 @@ def _observations_from_response(
                 title="Google Sheet excerpt",
                 tags=("delivery",),
                 period=None,
-                observed_at="1970-01-01T00:00:00Z",
+                observed_at=utc_now_iso(),
                 excerpt=excerpt,
                 provenance=("google",),
             ),
@@ -146,7 +155,6 @@ def _gmail_observation(item: Mapping[str, Any]) -> Observation:
     message_id = str(item.get("id", "unknown"))
     subject = str(item.get("subject", "Gmail message"))
     snippet = str(item.get("snippet", ""))
-    observed_at = str(item.get("date", "1970-01-01T00:00:00Z"))
     return Observation(
         source_id=f"gmail:{message_id}",
         source_connector="google",
@@ -154,7 +162,7 @@ def _gmail_observation(item: Mapping[str, Any]) -> Observation:
         title=subject,
         tags=("kudos",) if "kudos" in subject.lower() else ("delivery",),
         period=None,
-        observed_at=observed_at,
+        observed_at=observation_timestamp(item.get("date")),
         excerpt=snippet,
         provenance=("google",),
     )
@@ -163,7 +171,6 @@ def _gmail_observation(item: Mapping[str, Any]) -> Observation:
 def _calendar_observation(item: Mapping[str, Any]) -> Observation:
     event_id = str(item.get("id", "unknown"))
     summary = str(item.get("summary", "Calendar event"))
-    observed_at = str(item.get("start", "1970-01-01T00:00:00Z"))
     return Observation(
         source_id=f"calendar:{event_id}",
         source_connector="google",
@@ -171,7 +178,7 @@ def _calendar_observation(item: Mapping[str, Any]) -> Observation:
         title=summary,
         tags=("delivery",),
         period=None,
-        observed_at=observed_at,
+        observed_at=observation_timestamp(item.get("start")),
         excerpt=summary,
         provenance=("google",),
     )
@@ -187,7 +194,7 @@ def _drive_observation(item: Mapping[str, Any]) -> Observation:
         title=name,
         tags=("delivery",),
         period=None,
-        observed_at="1970-01-01T00:00:00Z",
+        observed_at=observation_timestamp(item.get("modifiedTime")),
         excerpt=name,
         provenance=("google",),
     )

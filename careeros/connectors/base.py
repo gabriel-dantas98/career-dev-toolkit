@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 MAX_THREAD_EXCERPT = 8_000
@@ -81,6 +82,29 @@ class CollectRequest:
 
 class Connector(Protocol):
     def collect(self, request: CollectRequest) -> tuple[Observation, ...]: ...
+
+
+def validate_time_window(time_window: tuple[str, str]) -> None:
+    start_raw, end_raw = time_window
+    if not start_raw.strip() or not end_raw.strip():
+        raise ConnectorRequestInvalid("time window requires finite ISO-8601 start and end")
+
+    try:
+        start = _parse_iso8601(start_raw.strip())
+        end = _parse_iso8601(end_raw.strip())
+    except ValueError as exc:
+        raise ConnectorRequestInvalid("time window requires finite ISO-8601 start and end") from exc
+
+    if start >= end:
+        raise ConnectorRequestInvalid("time window start must be before end")
+
+
+def _parse_iso8601(value: str) -> datetime:
+    normalized = value.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        raise ValueError("timestamp must include timezone")
+    return parsed
 
 
 def observation_from_mapping(data: Mapping[str, object]) -> Observation:

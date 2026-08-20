@@ -5,20 +5,27 @@ import subprocess
 from collections.abc import Callable
 from typing import Any
 
+from careeros.consent import ConsentService
 from careeros.connectors.base import (
     MAX_GITHUB_RESULTS,
     CollectRequest,
     ConnectorRequestInvalid,
     Observation,
 )
+from careeros.connectors.timestamps import observation_timestamp
+
+GITHUB_CONNECTOR_RESOURCE = "connector:github"
+GITHUB_READ_SCOPE = "read"
 
 
 class GitHubConnector:
     def __init__(
         self,
         *,
+        consent: ConsentService,
         runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
     ) -> None:
+        self._consent = consent
         self._runner = runner or subprocess.run
 
     def collect(self, request: CollectRequest) -> tuple[Observation, ...]:
@@ -40,6 +47,8 @@ class GitHubConnector:
             raise ConnectorRequestInvalid(
                 f"GitHub max_results must be between 1 and {MAX_GITHUB_RESULTS}"
             )
+
+        self._consent.require("connector", GITHUB_CONNECTOR_RESOURCE, GITHUB_READ_SCOPE)
 
         jq_filter = _jq_projection(fields)
         argv = [
@@ -68,7 +77,7 @@ class GitHubConnector:
                 continue
             observations.append(_observation_from_github(item))
 
-        return tuple(observations)
+        return tuple(observations[:max_results])
 
 
 def _jq_projection(fields: str) -> str:
@@ -83,6 +92,7 @@ def _observation_from_github(item: dict[str, Any]) -> Observation:
     title = str(item.get("title", "Untitled GitHub item"))
     state = str(item.get("state", ""))
     source_id = f"github:pull/{number}" if number is not None else f"github:{html_url}"
+    source_timestamp = item.get("updated_at") or item.get("merged_at")
 
     tags = ("impact",) if title.startswith("[Impact]") else ("delivery",)
 
@@ -93,7 +103,7 @@ def _observation_from_github(item: dict[str, Any]) -> Observation:
         title=title,
         tags=tags,
         period=None,
-        observed_at="1970-01-01T00:00:00Z",
+        observed_at=observation_timestamp(source_timestamp),
         excerpt=title,
         pr_locator=html_url or None,
         pr_status=state or None,

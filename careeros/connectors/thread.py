@@ -9,6 +9,7 @@ from careeros.connectors.base import (
     Observation,
     PrivacyBlocked,
 )
+from careeros.connectors.timestamps import utc_now_iso
 from careeros.privacy import scan_sensitive
 
 _FIELD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -50,7 +51,7 @@ class ThreadConnector:
                 title=title,
                 tags=tags,
                 period=None,
-                observed_at="1970-01-01T00:00:00Z",
+                observed_at=utc_now_iso(),
                 excerpt=excerpt,
                 jira_key=fields.get("jira"),
                 pr_locator=fields.get("pr"),
