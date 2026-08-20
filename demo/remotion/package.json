@@ -1,0 +1,17 @@
+{
+  "name": "careeros-remotion-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "render": "remotion render src/index.jsx CareerOSDemo out/careeros-demo.mp4",
+    "browser:ensure": "remotion browser ensure"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.514",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.514"
+  }
+}

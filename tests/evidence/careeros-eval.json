@@ -1,0 +1,56 @@
+{
+  "counts": {
+    "gatewayReadBacks": 1,
+    "gatewayRequests": 3,
+    "gatewayWrites": 1,
+    "mergedRecords": 1,
+    "persistedRecords": 1,
+    "promotionWorkCards": 1,
+    "rejectedRecords": 1,
+    "sourceObservations": 3,
+    "timelineCards": 1,
+    "validationIssues": 1
+  },
+  "ruleIds": {
+    "backgroundConsent": [
+      "consent.background.required"
+    ],
+    "encryptedStore": [
+      "store.sqlcipher.active",
+      "store.plaintext.rejected",
+      "store.reopen.succeeded"
+    ],
+    "harvest": [
+      "harvest.overlap.merged",
+      "harvest.persistence.succeeded"
+    ],
+    "outputs": [
+      "outputs.period.resolved"
+    ],
+    "privacy": [
+      "privacy.blocked"
+    ],
+    "readBack": [
+      "sync.read_back.exact"
+    ],
+    "safeWrite": [
+      "sync.raw.required",
+      "sync.synced"
+    ],
+    "validation": [
+      "impact.evidence.missing"
+    ]
+  },
+  "schemaVersion": 1,
+  "stages": {
+    "backgroundConsent": "passed",
+    "encryptedStore": "passed",
+    "harvest": "passed",
+    "outputs": "passed",
+    "privacy": "passed",
+    "readBack": "passed",
+    "safeWrite": "passed",
+    "validation": "passed"
+  },
+  "status": "passed"
+}

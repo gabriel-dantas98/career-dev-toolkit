@@ -1,0 +1,2 @@
+ALTER TABLE records ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE evidence ADD COLUMN connector TEXT NOT NULL DEFAULT '';

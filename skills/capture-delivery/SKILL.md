@@ -1,41 +1,45 @@
 ---
 name: capture-delivery
-description: Turn the current coding or work thread into one or more privacy-aware STAR delivery drafts. Use after completing work, preparing a brag document or performance review, or when the user wants to recover career evidence without answering a long interview.
+description: Use when turning the current coding or work thread into privacy-aware career evidence for a brag document or performance review.
 ---
 
 # Capture delivery
 
 ## Workflow
 
-1. Inspect the current thread before asking for more context.
-2. Identify zero, one, or multiple candidate deliveries.
-3. Apply a privacy gate before quoting or restructuring content:
-   - Stop when the thread exposes credentials, tokens, private keys, personal contact data, customer identifiers, or other obvious secrets.
-   - Name only the category of sensitive content. Do not reproduce the value.
-   - Ask the user to remove or replace it before continuing.
-4. Structure each safe candidate as:
-   - **Situation:** the relevant context or problem.
-   - **Task:** the responsibility, constraint, or intended outcome.
-   - **Action:** what the user personally decided, changed, coordinated, or built.
-   - **Result:** the observed outcome and its evidence.
-5. Ask zero questions by default.
-6. Ask at most one question only when its answer would materially improve individual attribution or the Result.
-7. Keep missing information as an explicit evidence gap. When a field is missing, start it with the exact text `Evidence gap:`. Do not substitute `not measured`, `unknown`, a dash, or another label. Do not invent metrics, scope, causality, dates, stakeholders, or ownership.
-8. Return a reviewable draft. Do not persist, sync, or upload anything in this bootstrap.
+1. Inspect the current thread and select only the smallest excerpt needed for the candidate deliveries.
+2. Resolve the checkout and invoke the shared capture command:
 
-## Output
+   ```bash
+   repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 1
+   cd "$repo_root" || exit 1
+   python -m careeros capture-delivery --json
+   ```
+
+3. Apply the CLI privacy gate before quoting or restructuring content. Stop on a finding, name only its category, and never reproduce the sensitive value.
+4. Ask zero questions by default. Ask at most one question only when the answer would materially improve attribution or the Result.
+5. During setup, request at most one user action per onboarding turn. Rerun the CLI after that action.
+6. Preserve missing information as an explicit evidence gap. When a STAR value is missing, start it with the exact text `Evidence gap:` and add the same gap to `evidence_gaps`.
+7. Do not invent impact, metrics, scope, causality, dates, stakeholders, or ownership.
+8. Return a reviewable draft. Do not persist, sync, upload, deploy, or publish it.
+
+## Bragdoc draft
 
 For each delivery, return:
 
 ```markdown
-### <specific working title>
-
-- Situation: <known context or "Evidence gap: ...">
-- Task: <known responsibility or "Evidence gap: ...">
-- Action: <user's contribution or "Evidence gap: ...">
-- Result: <observed outcome or "Evidence gap: ...">
-- Evidence: <metrics, links, dates, or artifacts already present in the thread>
-- Confidence: complete | partial
+- record_id: <CLI value>
+- period: <known period or null>
+- title: <specific working title>
+- tags: <CLI taxonomy values>
+- context: <CLI context value>
+- confidence: complete | partial
+- situation: <known context or "Evidence gap: ...">
+- task: <known responsibility or "Evidence gap: ...">
+- action: <user contribution or "Evidence gap: ...">
+- result: <observed outcome or "Evidence gap: ...">
+- evidence: <only links, dates, metrics, or artifacts present in the excerpt>
+- evidence_gaps: <explicit unresolved items>
 ```
 
-Keep claims proportional to the evidence. Prefer concrete verbs and plain language over promotion jargon.
+Keep Situation, Task, Action, and Result proportional to the evidence. Use the CLI's schema values rather than deriving identifiers or taxonomy in the skill.

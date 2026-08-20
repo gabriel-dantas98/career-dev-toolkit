@@ -1,0 +1,240 @@
+import json
+import stat
+
+import pytest
+
+from careeros.deploy import (
+    DeploymentBlocked,
+    DeployService,
+    FileDeploymentRegistry,
+    parse_web_app_url,
+)
+from careeros.outputs import BRAG_DOCUMENT_GID, build_homepage
+from careeros.urls import validate_google_exec_url
+
+
+REAL_URL = "https://script.google.com/macros/s/AKfycbSynthetic_123/exec"
+
+
+class FakeClasp:
+    def __init__(self, *, healthy: bool, deploy_output: str = REAL_URL) -> None:
+        self.healthy = healthy
+        self.deploy_output = deploy_output
+        self.calls: list[str] = []
+
+    def health(self) -> bool:
+        self.calls.append("health")
+        return self.healthy
+
+    def deploy(self) -> str:
+        self.calls.append("deploy")
+        return self.deploy_output
+
+
+class RecordingRegistry:
+    def __init__(self) -> None:
+        self.urls: list[str] = []
+
+    def register(self, web_app_url: str) -> None:
+        self.urls.append(web_app_url)
+
+
+def test_deploy_refuses_before_external_mutation_when_clasp_health_fails() -> None:
+    clasp = FakeClasp(healthy=False)
+    registry = RecordingRegistry()
+
+    with pytest.raises(DeploymentBlocked, match="health"):
+        DeployService(clasp=clasp, registry=registry).deploy()
+
+    assert clasp.calls == ["health"]
+    assert registry.urls == []
+
+
+def test_deploy_registers_exact_real_exec_url_and_homepage_uses_it() -> None:
+    clasp = FakeClasp(
+        healthy=True,
+        deploy_output=f"Deployment complete\nWeb app: {REAL_URL}\n",
+    )
+    registry = RecordingRegistry()
+
+    result = DeployService(clasp=clasp, registry=registry).deploy()
+
+    assert clasp.calls == ["health", "deploy"]
+    assert result.web_app_url == REAL_URL
+    assert registry.urls == [REAL_URL]
+    assert result.homepage["webAppUrl"] == REAL_URL
+    assert result.homepage["source"] == {
+        "kind": "brag-document",
+        "gid": BRAG_DOCUMENT_GID,
+    }
+
+
+def test_deploy_registers_then_consent_writes_and_reads_back_homepage() -> None:
+    events: list[object] = []
+
+    class OrderedClasp:
+        def health(self) -> bool:
+            events.append("health")
+            return True
+
+        def deploy(self) -> str:
+            events.append("deploy")
+            return f"Web app: {REAL_URL}"
+
+    class OrderedRegistry:
+        def register(self, web_app_url: str) -> None:
+            events.append(("register", web_app_url))
+
+    class RecordingConsent:
+        def require(
+            self,
+            grant_type: str,
+            resource_id: str,
+            scope: str,
+        ) -> None:
+            events.append(("consent", grant_type, resource_id, scope))
+
+    class HomepageGateway:
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            events.append(("gateway", payload))
+            if payload["action"] == "sheets.writeHomepage":
+                return {"ok": True, "data": {"range": "'Homepage'!A1:B3"}}
+            return {
+                "ok": True,
+                "data": {
+                    "values": [
+                        ["webAppUrl", REAL_URL],
+                        ["source.kind", "brag-document"],
+                        ["source.gid", BRAG_DOCUMENT_GID],
+                    ]
+                },
+            }
+
+    result = DeployService(
+        clasp=OrderedClasp(),
+        registry=OrderedRegistry(),
+        gateway=HomepageGateway(),
+        consent=RecordingConsent(),
+        homepage_destination_id="sheet:synthetic-homepage",
+    ).deploy()
+
+    assert result.homepage_written is True
+    assert events == [
+        "health",
+        "deploy",
+        ("register", REAL_URL),
+        (
+            "consent",
+            "destination",
+            "sheet:synthetic-homepage",
+            "write:homepage",
+        ),
+        (
+            "gateway",
+            {
+                "action": "sheets.writeHomepage",
+                "spreadsheetId": "synthetic-homepage",
+                "sheetName": "Homepage",
+                "range": "A1:B3",
+                "inputMode": "RAW",
+                "homepage": {
+                    "webAppUrl": REAL_URL,
+                    "source": {
+                        "kind": "brag-document",
+                        "gid": BRAG_DOCUMENT_GID,
+                    },
+                },
+            },
+        ),
+        (
+            "consent",
+            "destination",
+            "sheet:synthetic-homepage",
+            "write:homepage",
+        ),
+        (
+            "gateway",
+            {
+                "action": "sheets.readBack",
+                "spreadsheetId": "synthetic-homepage",
+                "sheetName": "Homepage",
+                "startRow": 1,
+                "rowCount": 3,
+                "columnCount": 2,
+            },
+        ),
+    ]
+
+
+def test_deploy_blocks_when_homepage_readback_does_not_match() -> None:
+    class HomepageGateway:
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            if payload["action"] == "sheets.writeHomepage":
+                return {"ok": True, "data": {}}
+            return {"ok": True, "data": {"values": [["different"]]}}
+
+    class AllowingConsent:
+        def require(self, grant_type: str, resource_id: str, scope: str) -> None:
+            pass
+
+    with pytest.raises(DeploymentBlocked, match="read-back"):
+        DeployService(
+            clasp=FakeClasp(healthy=True),
+            registry=RecordingRegistry(),
+            gateway=HomepageGateway(),
+            consent=AllowingConsent(),
+            homepage_destination_id="sheet:synthetic-homepage",
+        ).deploy()
+
+
+def test_file_deployment_registry_writes_private_exact_url(tmp_path) -> None:
+    path = tmp_path / "state" / "deployment.json"
+    registry = FileDeploymentRegistry(path)
+
+    registry.register(REAL_URL)
+
+    assert json.loads(path.read_text()) == {"webAppUrl": REAL_URL}
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "Deployed AKfycbSynthetic_123",
+        "https://example.test/macros/s/AKfycbSynthetic_123/exec",
+        "https://script.google.com/macros/s/AKfycbSynthetic_123/dev",
+        "prefixhttps://script.google.com/macros/s/AKfycbSynthetic_123/execsuffix",
+        "https://script.google.com/macros/s/AKfycbSynthetic_123/exec?user=synthetic",
+    ],
+)
+def test_parse_web_app_url_rejects_non_real_or_derived_urls(output: str) -> None:
+    with pytest.raises(DeploymentBlocked, match="/exec"):
+        parse_web_app_url(output)
+
+
+def test_parse_web_app_url_accepts_workspace_domain_exec_url() -> None:
+    url = (
+        "https://script.google.com/a/macros/example.test/s/"
+        "AKfycbSynthetic_123/exec"
+    )
+
+    assert parse_web_app_url(f"web app {url}") == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://script.google.com/anything/exec",
+        "https://script.google.com/macros/s/synthetic/exec?query=1",
+        "https://script.google.com/macros/s/synthetic/exec#fragment",
+        "https://script.google.com:443/macros/s/synthetic/exec",
+        "https://user@script.google.com/macros/s/synthetic/exec",
+    ],
+)
+def test_deploy_and_homepage_share_strict_macros_exec_validation(url: str) -> None:
+    with pytest.raises(ValueError, match="Google Apps Script"):
+        validate_google_exec_url(url)
+    with pytest.raises(ValueError, match="Google Apps Script"):
+        build_homepage(url)
+    with pytest.raises(DeploymentBlocked, match="/exec"):
+        parse_web_app_url(f"web app {url}")

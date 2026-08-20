@@ -25,6 +25,13 @@ jobs:
         with:
           node-version: "22"
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Python runtime and test dependencies
+        run: python -m pip install -e ".[dev]"
+
       - name: Validate JSON manifests
         run: |
           node -e 'for (const file of process.argv.slice(1)) JSON.parse(require("node:fs").readFileSync(file, "utf8"))' \
@@ -44,6 +51,7 @@ jobs:
 
       - name: Run deterministic evals
         run: |
+          npm run test:python
           npm test
           npm run eval:static
 
