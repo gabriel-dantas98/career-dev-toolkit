@@ -74,6 +74,15 @@ for skill in "${skills[@]}"; do
   if grep -Eqi '(Claude Code|Cursor|Codex|\.claude-plugin|\.cursor-plugin|\.codex-plugin)' "$skill_file"; then
     fail "skills/${skill}/SKILL.md contains platform-specific behavior"
   fi
+
+  command_output="$(
+    cd "$repo_root" &&
+      printf '{}\n' | PYTHONPATH=. python -m careeros "$skill" --json 2>/dev/null
+  )"
+  if [[ "$command_output" == *'"code": "unknown_command"'* ]] ||
+    [[ "$command_output" == *'"code":"unknown_command"'* ]]; then
+    fail "python -m careeros ${skill} is not registered"
+  fi
 done
 
 mutating_skills=(

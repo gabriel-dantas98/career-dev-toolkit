@@ -206,6 +206,21 @@ def test_harvest_persists_valid_records_transactionally() -> None:
     assert len(row["evidence"]) == 2
 
 
+def test_harvest_can_build_records_without_persisting() -> None:
+    store = memory_store()
+    request = HarvestRequest(
+        observations=overlap_request().observations,
+        persist=False,
+    )
+
+    result = HarvestService(store).run(request)
+
+    assert len(result.records) == 1
+    assert result.persisted is False
+    assert result.persistence_error is None
+    assert store.count_records() == 0
+
+
 def test_harvest_reports_structured_persistence_error() -> None:
     class FailingStore:
         def count_records(self) -> int:
