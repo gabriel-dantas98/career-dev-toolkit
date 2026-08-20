@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -8,6 +9,13 @@ from typing import Protocol
 MAX_THREAD_EXCERPT = 8_000
 MAX_GITHUB_RESULTS = 100
 MAX_GOOGLE_RESULTS = 50
+MAX_SHEET_READ_CELLS = 500
+MAX_SHEET_ROWS = 1_000_000
+MAX_SHEET_COLUMNS = 18_278
+
+_FINITE_A1_RANGE = re.compile(
+    r"^([A-Za-z]{1,3})([1-9][0-9]{0,6})(?::([A-Za-z]{1,3})([1-9][0-9]{0,6}))?$"
+)
 
 GOOGLE_SEARCH_ACTIONS = frozenset(
     {
@@ -78,6 +86,8 @@ class CollectRequest:
     query: str | None = None
     time_window: tuple[str, str] | None = None
     resource_id: str | None = None
+    sheet_name: str | None = None
+    range: str | None = None
 
 
 class Connector(Protocol):
@@ -103,12 +113,53 @@ def bound_excerpt(text: str) -> str:
     return text[:MAX_THREAD_EXCERPT]
 
 
+def validate_sheet_range(value: str) -> str:
+    match = _FINITE_A1_RANGE.fullmatch(value.strip())
+    if match is None:
+        raise ConnectorRequestInvalid("sheets.read range must be a finite A1 rectangle")
+
+    start_column = _column_number(match.group(1))
+    start_row = int(match.group(2))
+    end_column = _column_number(match.group(3) or match.group(1))
+    end_row = int(match.group(4) or match.group(2))
+    cell_count = (end_column - start_column + 1) * (end_row - start_row + 1)
+    if (
+        start_column > end_column
+        or start_row > end_row
+        or end_column > MAX_SHEET_COLUMNS
+        or end_row > MAX_SHEET_ROWS
+        or cell_count > MAX_SHEET_READ_CELLS
+    ):
+        raise ConnectorRequestInvalid("sheets.read range exceeds the fixed cell bounds")
+
+    return (
+        f"{_column_label(start_column)}{start_row}:"
+        f"{_column_label(end_column)}{end_row}"
+    )
+
+
 def _parse_iso8601(value: str) -> datetime:
     normalized = value.replace("Z", "+00:00")
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
         raise ValueError("timestamp must include timezone")
     return parsed
+
+
+def _column_number(label: str) -> int:
+    result = 0
+    for character in label.upper():
+        result = result * 26 + ord(character) - 64
+    return result
+
+
+def _column_label(number: int) -> str:
+    value = number
+    label = ""
+    while value > 0:
+        value, remainder = divmod(value - 1, 26)
+        label = chr(65 + remainder) + label
+    return label
 
 
 def observation_from_mapping(data: Mapping[str, object]) -> Observation:

@@ -56,7 +56,7 @@ class BragSheetProjection:
 
 
 def serialize_period(value: str | None) -> SerializedCell:
-    normalized = value or ""
+    normalized = (value or "").strip()
     match = _SLASH_PERIOD.fullmatch(normalized)
     if match:
         first = int(match.group("first"))

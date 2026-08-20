@@ -17,14 +17,14 @@ Provide one user-deployed Apps Script web app for bounded CareerOS Google reads 
 - JSON POST requests with `action`, `requestId`, Unix-seconds `timestamp`, and a single-use `nonce`.
 - Explicit Google resource IDs, bounded time windows, bounded result counts, and bounded A1 ranges required by the selected action.
 - `sheets.writeBragsheet` rows whose canonical values were serialized by CareerOS and whose `inputMode` is exactly `RAW`.
-- Browser-mode calls made through a persistent authenticated browser transport, with bounded retries only for transient Google interstitials.
+- Browser-mode calls made through a persistent authenticated browser transport, defaulting to three attempts with a hard ceiling of five and retrying only transient Google interstitials.
 
 ## Outputs
 
 - An envelope `{ok, requestId, data, errors, version}` for every success and failure.
 - Minimal Calendar, Gmail, Drive, Docs, and Sheets fields for the fixed actions `health`, `calendar.search`, `gmail.search`, `drive.search`, `docs.read`, `sheets.read`, `sheets.writeBragsheet`, and `sheets.readBack`.
-- Brag-sheet writes restricted to an explicit spreadsheet ID, sheet name, start row, fixed projection width, finite row count, and `RAW` values.
-- Exact read-back values over the same bounded projection range.
+- Brag-sheet writes restricted to an explicit spreadsheet ID, sheet name, start row, fixed projection width, finite row count, and `RAW` values. Each write clears only the owned 200-row by 12-column area before replacing its current rows, so shrinking projections cannot retain stale owned data.
+- Exact read-back values over the same bounded projection range through Sheets v4 `Values.get` with `UNFORMATTED_VALUE`.
 
 ## Security and bounds
 
@@ -32,6 +32,7 @@ Provide one user-deployed Apps Script web app for bounded CareerOS Google reads 
 - Require timestamps within five minutes of server time and nonces matching a conservative identifier pattern. `CacheService` stores each accepted nonce before dispatch and rejects replay.
 - Cap search windows at 366 days, search results at 50, Docs text at 8,000 characters, sheet reads at 500 cells, brag-sheet writes at 200 rows by 12 columns, and request bodies at 256 KiB.
 - Require explicit resource IDs and sheet names. Parse A1 notation locally before calling Sheets, and reject open-ended, whole-row, whole-column, multi-area, or oversized ranges.
+- Reject Gmail grouping characters, braces, brackets, and bare `OR` before building the server-owned `after`/`before` window.
 - Return stable error codes and redacted messages. Never echo request bodies, authorization canaries, source queries, nonce values, or provider exception text.
 
 ## Sync contract
@@ -39,9 +40,9 @@ Provide one user-deployed Apps Script web app for bounded CareerOS Google reads 
 - Python creates an immutable projection preview before external access.
 - Destination consent for `write:bragsheet` is rechecked immediately before `sheets.writeBragsheet`.
 - The write request always carries `inputMode: "RAW"`; ambiguous slash dates with both day and month at most 12 are prefixed with an apostrophe before they reach Google.
-- Python calls `sheets.readBack` after a successful write and compares the returned matrix exactly with the canonical intended matrix.
+- Python calls `sheets.readBack` after a successful write. The gateway reads with Sheets v4 `Values.get` and `UNFORMATTED_VALUE`, pads API-trimmed trailing blanks to the requested dimensions, and Python compares the matrix exactly with the canonical intended matrix.
 - A mismatch or unverifiable response records the sync run as `reconciliation_required`; only an exact match records `synced`.
-- Projection-time evidence gaps are retained in the encrypted canonical store. Migration `003` adds deterministic `evidence_gaps` persistence and sync reconciliation details for stores created by earlier tasks.
+- Projection-time evidence gaps are retained in the encrypted canonical store. Migration `003` adds deterministic `evidence_gaps` persistence for stores created by earlier tasks; reconciliation status continues to use the `sync_runs` table created by migration `001`.
 
 ## Voice/Tone
 
@@ -49,5 +50,5 @@ Errors are direct, calm, and actionable. They identify a stable rule or action w
 
 ## Open questions
 
-- Live Apps Script OAuth scopes, deployment, and authenticated browser behavior require separate manual certification with a user-authorized Google account.
+- Live Apps Script OAuth scopes, deployment, and authenticated browser behavior require separate manual certification with a user-authorized Google account. The first certification check must RAW-write an ambiguous period and trailing blank, read it through `Values.get` with `UNFORMATTED_VALUE`, verify exact equality, then shrink the projection and confirm only stale cells inside `A:L` across the owned 200-row window were cleared.
 - Deployment and homepage actions remain intentionally absent until Task 6 defines their exact inputs, limits, consent, and response fields.

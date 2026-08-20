@@ -70,6 +70,13 @@ def test_unambiguous_period_remains_raw(value: str) -> None:
     assert cell.input_mode == "RAW"
 
 
+def test_period_is_trimmed_before_ambiguous_literal_prefix() -> None:
+    cell = serialize_period("  03/04/2026  ")
+
+    assert cell.value == "'03/04/2026"
+    assert cell.input_mode == "RAW"
+
+
 def test_projection_is_fixed_width_raw_and_preserves_evidence_gaps() -> None:
     projection = project_bragsheet(
         (synthetic_record(),),
@@ -117,6 +124,23 @@ class ExactGateway:
         if payload["action"] == "sheets.readBack":
             return envelope(payload, {"values": self.values})
         raise AssertionError("unexpected action")
+
+
+def test_sync_service_preview_directly_makes_zero_gateway_calls(store) -> None:
+    gateway = ExactGateway()
+    service = SyncService(
+        consent=OrderedConsent([]),  # type: ignore[arg-type]
+        run_store=EncryptedSyncRunStore(store.connection()),
+    )
+
+    projection = service.preview(
+        (synthetic_record(),),
+        destination_id="sheet:synthetic-sheet",
+        sheet_name="Brag Sheet",
+    )
+
+    assert projection.row_count == 1
+    assert gateway.calls == []
 
 
 def envelope(
@@ -214,6 +238,36 @@ def test_readback_mismatch_never_marks_synced(store) -> None:
         "SELECT status FROM sync_runs ORDER BY id DESC LIMIT 1"
     ).fetchone()
     assert stored == ("reconciliation_required",)
+
+
+def test_reconciliation_record_failure_preserves_original_readback_error(store) -> None:
+    class FailingRunStore:
+        def record(self, _run) -> None:
+            raise RuntimeError("synthetic run-store failure")
+
+    consent = ConsentService(store)
+    consent.grant(
+        "destination",
+        "sheet:synthetic-sheet",
+        ("write:bragsheet",),
+    )
+    service = SyncService(
+        consent=consent,
+        run_store=FailingRunStore(),  # type: ignore[arg-type]
+    )
+    projection = project_bragsheet(
+        (synthetic_record(),),
+        destination_id="sheet:synthetic-sheet",
+        sheet_name="Brag Sheet",
+    )
+
+    with pytest.raises(ReadbackMismatch) as raised:
+        service.write_and_verify(projection, MismatchingGateway())
+
+    assert any(
+        "reconciliation status could not be recorded" in note
+        for note in getattr(raised.value, "__notes__", ())
+    )
 
 
 def test_evidence_gaps_round_trip_after_projection_migration(store) -> None:

@@ -113,8 +113,18 @@ class SyncService:
                 raise ReadbackMismatch(
                     "Brag-sheet read-back did not exactly match the intended projection"
                 )
-        except Exception:
-            self._finish(projection.destination_id, "reconciliation_required", started_at)
+        except Exception as original_error:
+            try:
+                self._finish(
+                    projection.destination_id,
+                    "reconciliation_required",
+                    started_at,
+                )
+            except Exception as recording_error:
+                original_error.add_note(
+                    "reconciliation status could not be recorded "
+                    f"({type(recording_error).__name__})"
+                )
             raise
 
         return self._finish(projection.destination_id, "synced", started_at)

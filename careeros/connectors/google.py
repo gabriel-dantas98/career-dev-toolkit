@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from careeros.consent import ConsentService
+from careeros.consent import (
+    ConsentService,
+    InvalidResourceId,
+    normalize_resource_id,
+)
 from careeros.connectors.base import (
     GOOGLE_SEARCH_ACTIONS,
     MAX_GOOGLE_RESULTS,
@@ -11,6 +15,7 @@ from careeros.connectors.base import (
     ConnectorRequestInvalid,
     Observation,
     bound_excerpt,
+    validate_sheet_range,
     validate_time_window,
 )
 from careeros.connectors.timestamps import observation_timestamp, utc_now_iso
@@ -59,6 +64,21 @@ class GoogleConnector:
         if action in {"docs.read", "sheets.read"}:
             if not request.resource_id or not request.resource_id.strip():
                 raise ConnectorRequestInvalid("Google read requires an explicit resource_id")
+            _bare_google_id(request.resource_id, "doc" if action == "docs.read" else "sheet")
+
+        if action == "sheets.read":
+            if (
+                request.sheet_name is None
+                or not request.sheet_name.strip()
+                or len(request.sheet_name) > 100
+                or any(ord(character) < 32 for character in request.sheet_name)
+            ):
+                raise ConnectorRequestInvalid(
+                    "sheets.read requires a bounded explicit sheet_name"
+                )
+            if request.range is None:
+                raise ConnectorRequestInvalid("sheets.read requires a finite range")
+            validate_sheet_range(request.range)
 
         self._consent.require("connector", GOOGLE_CONNECTOR_RESOURCE, action)
 
@@ -75,8 +95,12 @@ def _build_payload(request: CollectRequest, action: str) -> dict[str, object]:
         payload["timeMin"], payload["timeMax"] = request.time_window
     if request.max_results is not None:
         payload["maxResults"] = request.max_results
-    if request.resource_id is not None:
-        payload["resourceId"] = request.resource_id
+    if action == "docs.read" and request.resource_id is not None:
+        payload["documentId"] = _bare_google_id(request.resource_id, "doc")
+    if action == "sheets.read" and request.resource_id is not None:
+        payload["spreadsheetId"] = _bare_google_id(request.resource_id, "sheet")
+        payload["sheetName"] = request.sheet_name.strip() if request.sheet_name else ""
+        payload["range"] = validate_sheet_range(request.range or "")
     return payload
 
 
@@ -116,7 +140,7 @@ def _observations_from_response(
 
     if action == "docs.read":
         content = str(data.get("content", ""))
-        resource_id = str(data.get("resourceId", "doc:unknown"))
+        resource_id = _canonical_response_id(data.get("resourceId"), "doc")
         return (
             Observation(
                 source_id=resource_id,
@@ -126,15 +150,15 @@ def _observations_from_response(
                 tags=("delivery",),
                 period=None,
                 observed_at=utc_now_iso(),
-                excerpt=content[:MAX_GOOGLE_RESULTS * 100],
+                excerpt=bound_excerpt(content),
                 provenance=("google",),
             ),
         )
 
     if action == "sheets.read":
         values = data.get("values")
-        excerpt = str(values)[: MAX_GOOGLE_RESULTS * 100]
-        resource_id = str(data.get("resourceId", "sheet:unknown"))
+        excerpt = bound_excerpt(str(values))
+        resource_id = _canonical_response_id(data.get("resourceId"), "sheet")
         return (
             Observation(
                 source_id=resource_id,
@@ -150,6 +174,26 @@ def _observations_from_response(
         )
 
     return ()
+
+
+def _bare_google_id(resource_id: str, expected_prefix: str) -> str:
+    try:
+        canonical = normalize_resource_id(resource_id)
+    except InvalidResourceId as exc:
+        raise ConnectorRequestInvalid("Google read resource_id is invalid") from exc
+    prefix, identifier = canonical.split(":", 1)
+    if prefix != expected_prefix:
+        raise ConnectorRequestInvalid(
+            f"Google read requires a canonical {expected_prefix}: resource_id"
+        )
+    return identifier
+
+
+def _canonical_response_id(value: object, prefix: str) -> str:
+    identifier = str(value or "unknown")
+    if identifier.startswith(f"{prefix}:"):
+        return identifier
+    return f"{prefix}:{identifier}"
 
 
 def _gmail_observation(item: Mapping[str, Any]) -> Observation:

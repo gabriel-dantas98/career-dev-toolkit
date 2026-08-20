@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test:python": "PYTHONPATH=. python3 -m pytest tests/careeros -q",
-    "test": "node --test tests/evals/*.test.mjs",
+    "test": "node --test tests/evals/*.test.mjs tests/apps-script/*.test.mjs",
     "eval:static": "node evals/cli.mjs static",
     "eval:providers": "node evals/cli.mjs providers"
   }

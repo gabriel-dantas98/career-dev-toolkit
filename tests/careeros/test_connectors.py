@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -12,12 +14,19 @@ from careeros.connectors.base import (
     ConnectorRequestInvalid,
     PrivacyBlocked,
 )
+from careeros.connectors import base as connector_base
 from careeros.connectors.github import GITHUB_CONNECTOR_RESOURCE, GitHubConnector
 from careeros.connectors.google import (
     GOOGLE_ALLOWED_ACTIONS,
     GoogleConnector,
 )
 from careeros.connectors.thread import ThreadConnector
+from careeros import google_client, projections
+
+GATEWAY_HANDLER = (
+    Path(__file__).resolve().parents[1] / "apps-script" / "handler_cli.mjs"
+)
+GATEWAY_SOURCE = Path(__file__).resolve().parents[2] / "apps-script" / "Code.gs"
 
 
 def allow_google(consent: ConsentService) -> ConsentService:
@@ -236,6 +245,122 @@ def test_google_allowed_actions_are_fixed() -> None:
             "sheets.read",
         }
     )
+
+
+def test_google_sheets_read_payload_runs_through_real_gateway_handler(
+    google_consent,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class RealHandlerGateway:
+        def invoke(self, payload: dict[str, object]) -> dict[str, object]:
+            calls.append(payload)
+            completed = subprocess.run(
+                ["node", str(GATEWAY_HANDLER)],
+                input=json.dumps(payload),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return json.loads(completed.stdout)
+
+    connector = GoogleConnector(RealHandlerGateway(), consent=google_consent)
+    observations = connector.collect(
+        CollectRequest(
+            source="sheets",
+            action="sheets.read",
+            resource_id="sheet:synthetic-sheet-id",
+            sheet_name="Brag Sheet",
+            range="A1:B1",
+        )
+    )
+
+    assert calls == [
+        {
+            "action": "sheets.read",
+            "spreadsheetId": "synthetic-sheet-id",
+            "sheetName": "Brag Sheet",
+            "range": "A1:B1",
+        }
+    ]
+    assert len(observations) == 1
+    assert observations[0].source_id == "sheet:synthetic-sheet-id"
+    assert "Synthetic" in observations[0].excerpt
+
+
+@pytest.mark.parametrize(
+    ("sheet_name", "range_value", "message"),
+    [
+        (None, "A1:B1", "sheet_name"),
+        ("Brag Sheet", None, "range"),
+        ("Brag Sheet", "A:A", "range"),
+        ("Brag Sheet", "A1:Z1000", "range"),
+    ],
+)
+def test_google_sheets_read_requires_finite_sheet_and_range(
+    fake_gateway,
+    google_consent,
+    sheet_name: str | None,
+    range_value: str | None,
+    message: str,
+) -> None:
+    connector = GoogleConnector(fake_gateway, consent=google_consent)
+
+    with pytest.raises(ConnectorRequestInvalid, match=message):
+        connector.collect(
+            CollectRequest(
+                source="sheets",
+                action="sheets.read",
+                resource_id="sheet:synthetic-sheet-id",
+                sheet_name=sheet_name,
+                range=range_value,
+            )
+        )
+
+
+def test_google_docs_read_normalizes_canonical_id_to_bare_payload(
+    fake_gateway,
+    google_consent,
+) -> None:
+    connector = GoogleConnector(fake_gateway, consent=google_consent)
+
+    connector.collect(
+        CollectRequest(
+            source="docs",
+            action="docs.read",
+            resource_id="doc:synthetic-document-id",
+        )
+    )
+
+    assert fake_gateway.calls[-1] == {  # type: ignore[attr-defined]
+        "action": "docs.read",
+        "documentId": "synthetic-document-id",
+    }
+
+
+def test_python_and_apps_script_gateway_bounds_stay_in_parity() -> None:
+    source = GATEWAY_SOURCE.read_text()
+
+    def numeric_constant(name: str) -> int:
+        match = re.search(rf"var {name} = (\d+);", source)
+        assert match is not None
+        return int(match.group(1))
+
+    assert numeric_constant("MAX_RESULTS") == connector_base.MAX_GOOGLE_RESULTS
+    assert numeric_constant("MAX_DOC_CHARS") == connector_base.MAX_THREAD_EXCERPT
+    assert (
+        numeric_constant("MAX_SHEET_READ_CELLS")
+        == connector_base.MAX_SHEET_READ_CELLS
+    )
+    assert numeric_constant("MAX_SHEET_ROWS") == connector_base.MAX_SHEET_ROWS
+    assert numeric_constant("MAX_SHEET_COLUMNS") == connector_base.MAX_SHEET_COLUMNS
+    assert numeric_constant("MAX_BRAGSHEET_ROWS") == projections.MAX_BRAGSHEET_ROWS
+    assert (
+        numeric_constant("MAX_BRAGSHEET_COLUMNS")
+        == projections.MAX_BRAGSHEET_COLUMNS
+    )
+    assert "var MAX_REQUEST_BYTES = 256 * 1024;" in source
+    assert google_client.MAX_REQUEST_BYTES == 256 * 1024
 
 
 def test_thread_connector_rejects_sensitive_excerpt() -> None:

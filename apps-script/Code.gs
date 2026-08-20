@@ -137,11 +137,10 @@ function calendarSearch_(request, dependencies) {
 
 function gmailSearch_(request, dependencies) {
   var window = validateSearch_(request);
-  var query = validateQuery_(request.query, true);
+  var query = validateGmailQuery_(request.query);
   var boundedQuery =
-    "(" +
     query +
-    ") after:" +
+    " after:" +
     Math.floor(window.start.getTime() / 1000) +
     " before:" +
     Math.ceil(window.end.getTime() / 1000);
@@ -235,7 +234,7 @@ function sheetsWriteBragsheet_(request, dependencies) {
   var startRow = validateInteger_(
     request.startRow,
     1,
-    MAX_SHEET_ROWS,
+    MAX_SHEET_ROWS - MAX_BRAGSHEET_ROWS + 1,
     "START_ROW_OUT_OF_BOUNDS"
   );
   if (request.inputMode !== "RAW") {
@@ -260,6 +259,14 @@ function sheetsWriteBragsheet_(request, dependencies) {
     columnLabel_(matrix.columns) +
     (startRow + matrix.rows - 1);
   var sheetsApi = dependencies.sheets || productionSheets_();
+  var ownedRange =
+    quoteSheetName_(sheetName) +
+    "!A" +
+    startRow +
+    ":" +
+    columnLabel_(MAX_BRAGSHEET_COLUMNS) +
+    (startRow + MAX_BRAGSHEET_ROWS - 1);
+  sheetsApi.clear({}, spreadsheetId, ownedRange);
   sheetsApi.update(
     { values: request.values },
     spreadsheetId,
@@ -304,15 +311,24 @@ function sheetsReadBack_(request, dependencies) {
     );
   }
   var range =
-    "A" +
+    quoteSheetName_(sheetName) +
+    "!A" +
     startRow +
     ":" +
     columnLabel_(columnCount) +
     (startRow + rowCount - 1);
-  var spreadsheetApi =
-    dependencies.spreadsheet || productionSpreadsheet_();
+  var sheetsApi = dependencies.sheets || productionSheets_();
+  var response = sheetsApi.get(
+    spreadsheetId,
+    range,
+    { valueRenderOption: "UNFORMATTED_VALUE" }
+  );
   return {
-    values: spreadsheetApi.read(spreadsheetId, sheetName, range),
+    values: normalizeReadbackMatrix_(
+      response && response.values,
+      rowCount,
+      columnCount
+    ),
   };
 }
 
@@ -428,6 +444,20 @@ function validateQuery_(value, required) {
     );
   }
   return value.trim();
+}
+
+function validateGmailQuery_(value) {
+  var query = validateQuery_(value, true);
+  if (
+    /[(){}\[\]]/.test(query) ||
+    /(^|\s)OR(?=\s|$)/i.test(query)
+  ) {
+    throw new GatewayError(
+      "INVALID_QUERY",
+      "Gmail query contains unsupported grouping or OR syntax."
+    );
+  }
+  return query;
 }
 
 function validateResourceId_(value, fieldName) {
@@ -560,6 +590,22 @@ function validateCell_(value) {
   }
 }
 
+function normalizeReadbackMatrix_(values, rowCount, columnCount) {
+  var source = Array.isArray(values) ? values : [];
+  var normalized = [];
+  for (var rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    var sourceRow = Array.isArray(source[rowIndex]) ? source[rowIndex] : [];
+    var row = [];
+    for (var columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+      row.push(
+        sourceRow[columnIndex] === undefined ? "" : sourceRow[columnIndex]
+      );
+    }
+    normalized.push(row);
+  }
+  return normalized;
+}
+
 function columnNumber_(label) {
   var value = String(label).toUpperCase();
   var result = 0;
@@ -683,6 +729,20 @@ function productionSpreadsheet_() {
 
 function productionSheets_() {
   return {
+    clear: function (resource, spreadsheetId, range) {
+      return Sheets.Spreadsheets.Values.clear(
+        resource,
+        spreadsheetId,
+        range
+      );
+    },
+    get: function (spreadsheetId, range, options) {
+      return Sheets.Spreadsheets.Values.get(
+        spreadsheetId,
+        range,
+        options
+      );
+    },
     update: function (resource, spreadsheetId, range, options) {
       return Sheets.Spreadsheets.Values.update(
         resource,

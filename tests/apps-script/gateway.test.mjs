@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GATEWAY_PATH = path.resolve(HERE, "../../apps-script/Code.gs");
+const PACKAGE_PATH = path.resolve(HERE, "../../package.json");
 const FIXED_NOW_MS = 1_787_198_400_000;
 
 function loadGateway() {
@@ -70,6 +71,12 @@ test("gateway exposes only the promised fixed action allowlist", () => {
     "sheets.writeBragsheet",
     "sheets.readBack",
   ]);
+});
+
+test("aggregate npm test includes the gateway suite", () => {
+  const packageJson = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+
+  assert.match(packageJson.scripts.test, /tests\/apps-script\/\*\.test\.mjs/);
 });
 
 test("unknown actions fail in the stable envelope without echoing canaries", () => {
@@ -164,9 +171,56 @@ test("search actions require finite windows and bounded counts", () => {
     deps,
   );
   assert.equal(timezoneMissing.errors[0].code, "INVALID_TIME_WINDOW");
+
+  const broadQuery = gateway.handleRequestForTest(
+    request("drive.search", {
+      nonce: "nonce-drive-query-0001",
+      query: "x".repeat(201),
+      timeMin: "2026-08-01T00:00:00Z",
+      timeMax: "2026-08-20T00:00:00Z",
+      maxResults: 10,
+    }),
+    deps,
+  );
+  assert.equal(broadQuery.errors[0].code, "INVALID_QUERY");
 });
 
-test("stale timestamps and replayed nonces fail closed", () => {
+test("Gmail rejects query grouping and bare OR before GmailApp", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+  let providerCalls = 0;
+  deps.gmail = {
+    search() {
+      providerCalls += 1;
+      return [];
+    },
+  };
+  const adversarialQueries = [
+    "(synthetic)",
+    "{synthetic evidence}",
+    "[synthetic evidence]",
+    "synthetic oR after:0",
+  ];
+
+  for (const [index, query] of adversarialQueries.entries()) {
+    const response = gateway.handleRequestForTest(
+      request("gmail.search", {
+        requestId: `gmail-query-${index}`,
+        nonce: `nonce-gmail-query-${index}-0001`,
+        query,
+        timeMin: "2026-08-01T00:00:00Z",
+        timeMax: "2026-08-20T00:00:00Z",
+        maxResults: 10,
+      }),
+      deps,
+    );
+    assert.equal(response.ok, false);
+    assert.equal(response.errors[0].code, "INVALID_QUERY");
+  }
+  assert.equal(providerCalls, 0);
+});
+
+test("stale timestamps, invalid nonces, and replayed nonces fail closed", () => {
   const { gateway } = loadGateway();
   const deps = dependencies();
 
@@ -178,6 +232,15 @@ test("stale timestamps and replayed nonces fail closed", () => {
     deps,
   );
   assert.equal(stale.errors[0].code, "STALE_REQUEST");
+
+  const invalidNonce = gateway.handleRequestForTest(
+    request("health", {
+      requestId: "invalid-nonce",
+      nonce: "short",
+    }),
+    deps,
+  );
+  assert.equal(invalidNonce.errors[0].code, "INVALID_NONCE");
 
   const body = request("health", { nonce: "nonce-replay-health-0001" });
   const first = gateway.handleRequestForTest(body, deps);
@@ -192,8 +255,18 @@ test("brag-sheet writes require RAW mode and use the bounded Sheets API update",
   const deps = dependencies();
   const calls = [];
   deps.sheets = {
+    clear(resource, spreadsheetId, range) {
+      calls.push({ action: "clear", resource, spreadsheetId, range });
+      return {};
+    },
     update(resource, spreadsheetId, range, options) {
-      calls.push({ resource, spreadsheetId, range, options });
+      calls.push({
+        action: "update",
+        resource,
+        spreadsheetId,
+        range,
+        options,
+      });
       return { updatedRows: resource.values.length };
     },
   };
@@ -222,9 +295,260 @@ test("brag-sheet writes require RAW mode and use the bounded Sheets API update",
     deps,
   );
   assert.equal(accepted.ok, true);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].options.valueInputOption, "RAW");
-  assert.equal(calls[0].range, "'Brag Sheet'!A2:B2");
+  assert.equal(calls.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), {
+    action: "clear",
+    resource: {},
+    spreadsheetId: "synthetic-sheet-id",
+    range: "'Brag Sheet'!A2:L201",
+  });
+  assert.equal(calls[1].action, "update");
+  assert.equal(calls[1].options.valueInputOption, "RAW");
+  assert.equal(calls[1].range, "'Brag Sheet'!A2:B2");
+});
+
+test("read-back uses UNFORMATTED_VALUE and pads the requested matrix", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+  const calls = [];
+  deps.sheets = {
+    get(spreadsheetId, range, options) {
+      calls.push({ spreadsheetId, range, options });
+      return { values: [["delivery:1"]] };
+    },
+  };
+
+  const response = gateway.handleRequestForTest(
+    request("sheets.readBack", {
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Brag Sheet",
+      startRow: 2,
+      rowCount: 1,
+      columnCount: 2,
+    }),
+    deps,
+  );
+
+  assert.equal(response.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(response.data.values)), [
+    ["delivery:1", ""],
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    {
+      spreadsheetId: "synthetic-sheet-id",
+      range: "'Brag Sheet'!A2:B2",
+      options: { valueRenderOption: "UNFORMATTED_VALUE" },
+    },
+  ]);
+});
+
+test("a shrinking write clears stale owned rows without expanding ownership", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+  const state = {
+    ownedRows: Array(200).fill(undefined),
+    outsideColumn: "keep-M2",
+    outsideRow: "keep-A202",
+  };
+  deps.sheets = {
+    clear(_resource, _spreadsheetId, range) {
+      assert.equal(range, "'Brag Sheet'!A2:L201");
+      state.ownedRows.fill(undefined);
+      return {};
+    },
+    update(resource, _spreadsheetId, range, options) {
+      assert.equal(options.valueInputOption, "RAW");
+      resource.values.forEach((row, index) => {
+        state.ownedRows[index] = Array.from(row);
+      });
+      return { updatedRange: range };
+    },
+  };
+
+  const first = gateway.handleRequestForTest(
+    request("sheets.writeBragsheet", {
+      nonce: "nonce-shrink-first-0001",
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Brag Sheet",
+      startRow: 2,
+      inputMode: "RAW",
+      values: [["first"], ["stale"]],
+    }),
+    deps,
+  );
+  const second = gateway.handleRequestForTest(
+    request("sheets.writeBragsheet", {
+      requestId: "request-shrink-second",
+      nonce: "nonce-shrink-second-0001",
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Brag Sheet",
+      startRow: 2,
+      inputMode: "RAW",
+      values: [["replacement"]],
+    }),
+    deps,
+  );
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.deepEqual(state.ownedRows[0], ["replacement"]);
+  assert.equal(state.ownedRows[1], undefined);
+  assert.equal(state.outsideColumn, "keep-M2");
+  assert.equal(state.outsideRow, "keep-A202");
+});
+
+test("resource, body, matrix, and write/read-back bounds have stable errors", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+
+  const oversizedBody = gateway.handleRequestForTest(
+    "x".repeat(256 * 1024 + 1),
+    deps,
+  );
+  assert.equal(oversizedBody.errors[0].code, "REQUEST_TOO_LARGE");
+
+  const invalidJson = gateway.handleRequestForTest("{", deps);
+  assert.equal(invalidJson.errors[0].code, "INVALID_JSON");
+
+  const invalidShape = gateway.handleRequestForTest("[]", deps);
+  assert.equal(invalidShape.errors[0].code, "INVALID_REQUEST");
+
+  const invalidRequestId = gateway.handleRequestForTest(
+    request("health", { requestId: "spaces are not identifiers" }),
+    deps,
+  );
+  assert.equal(invalidRequestId.errors[0].code, "INVALID_REQUEST_ID");
+
+  const invalidResource = gateway.handleRequestForTest(
+    request("docs.read", {
+      nonce: "nonce-invalid-resource-0001",
+      documentId: "doc:canonical-is-not-bare",
+    }),
+    deps,
+  );
+  assert.equal(invalidResource.errors[0].code, "INVALID_RESOURCE_ID");
+
+  const invalidSheetName = gateway.handleRequestForTest(
+    request("sheets.read", {
+      nonce: "nonce-invalid-sheet-name-0001",
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "",
+      range: "A1:B1",
+    }),
+    deps,
+  );
+  assert.equal(invalidSheetName.errors[0].code, "INVALID_SHEET_NAME");
+
+  const ragged = gateway.handleRequestForTest(
+    request("sheets.writeBragsheet", {
+      nonce: "nonce-ragged-write-0001",
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Brag Sheet",
+      startRow: 2,
+      inputMode: "RAW",
+      values: [["one", "two"], ["three"]],
+    }),
+    deps,
+  );
+  assert.equal(ragged.errors[0].code, "INVALID_VALUES");
+
+  for (const [index, value] of [
+    { nested: "not scalar" },
+    "x".repeat(8_001),
+  ].entries()) {
+    const response = gateway.handleRequestForTest(
+      request("sheets.writeBragsheet", {
+        requestId: `invalid-cell-${index}`,
+        nonce: `nonce-invalid-cell-${index}-0001`,
+        spreadsheetId: "synthetic-sheet-id",
+        sheetName: "Brag Sheet",
+        startRow: 2,
+        inputMode: "RAW",
+        values: [[value]],
+      }),
+      deps,
+    );
+    assert.equal(response.errors[0].code, "INVALID_VALUES");
+  }
+
+  const tooManyRows = gateway.handleRequestForTest(
+    request("sheets.writeBragsheet", {
+      nonce: "nonce-write-rows-0001",
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Brag Sheet",
+      startRow: 2,
+      inputMode: "RAW",
+      values: Array.from({ length: 201 }, () => ["value"]),
+    }),
+    deps,
+  );
+  assert.equal(tooManyRows.errors[0].code, "WRITE_OUT_OF_BOUNDS");
+
+  const tooManyColumns = gateway.handleRequestForTest(
+    request("sheets.writeBragsheet", {
+      nonce: "nonce-write-columns-0001",
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Brag Sheet",
+      startRow: 2,
+      inputMode: "RAW",
+      values: [Array.from({ length: 13 }, () => "value")],
+    }),
+    deps,
+  );
+  assert.equal(tooManyColumns.errors[0].code, "WRITE_OUT_OF_BOUNDS");
+
+  const ownedAreaOverflow = gateway.handleRequestForTest(
+    request("sheets.writeBragsheet", {
+      nonce: "nonce-write-overflow-0001",
+      spreadsheetId: "synthetic-sheet-id",
+      sheetName: "Brag Sheet",
+      startRow: 999_802,
+      inputMode: "RAW",
+      values: [["value"]],
+    }),
+    deps,
+  );
+  assert.equal(ownedAreaOverflow.errors[0].code, "START_ROW_OUT_OF_BOUNDS");
+
+  for (const [index, dimensions] of [
+    { rowCount: 201, columnCount: 1 },
+    { rowCount: 1, columnCount: 13 },
+    { rowCount: 200, columnCount: 12, startRow: 999_802 },
+  ].entries()) {
+    const response = gateway.handleRequestForTest(
+      request("sheets.readBack", {
+        requestId: `readback-bound-${index}`,
+        nonce: `nonce-readback-bound-${index}-0001`,
+        spreadsheetId: "synthetic-sheet-id",
+        sheetName: "Brag Sheet",
+        startRow: dimensions.startRow ?? 2,
+        rowCount: dimensions.rowCount,
+        columnCount: dimensions.columnCount,
+      }),
+      deps,
+    );
+    assert.equal(response.errors[0].code, "READBACK_OUT_OF_BOUNDS");
+  }
+});
+
+test("Docs content is capped at the shared excerpt bound", () => {
+  const { gateway } = loadGateway();
+  const deps = dependencies();
+  deps.docs = {
+    read() {
+      return "x".repeat(8_001);
+    },
+  };
+
+  const response = gateway.handleRequestForTest(
+    request("docs.read", {
+      documentId: "synthetic-document-id",
+    }),
+    deps,
+  );
+
+  assert.equal(response.ok, true);
+  assert.equal(response.data.content.length, 8_000);
 });
 
 test("gateway has no arbitrary evaluation or property-based action dispatch", () => {
@@ -233,5 +557,10 @@ test("gateway has no arbitrary evaluation or property-based action dispatch", ()
   assert.doesNotMatch(source, /\beval\s*\(/);
   assert.doesNotMatch(source, /\bFunction\s*\(/);
   assert.doesNotMatch(source, /\[[^\]]*action[^\]]*\]\s*\(/);
+  assert.match(
+    source,
+    /valueRenderOption:\s*"UNFORMATTED_VALUE"/,
+  );
+  assert.match(source, /Sheets\.Spreadsheets\.Values\.get/);
 });
 
