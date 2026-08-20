@@ -71,9 +71,10 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Fast unit tests may inject an explicitly named SQLite cipher-capability stub to exercise migrations, key lifecycle, permissions, and startup errors. That stub is not encryption evidence and must not be described as SQLCipher.
 - The blocking CI suite installs the project runtime and `dev` extra, then runs an unskipped production-driver integration test. Certification requires a nonempty real `PRAGMA cipher_version`, all migrations, reopening with the same synthetic key, and failure when stdlib `sqlite3` attempts to read the encrypted file.
 - A 256-bit key is generated locally, stored in the OS keychain under `careeros` / `db-key:<resolved-path>`, and validated as 64 lowercase hex characters before `PRAGMA key` interpolation (parameter binding is unsupported by the driver).
-- Startup executes `PRAGMA key` immediately, requires a nonempty `PRAGMA cipher_version`, applies versioned migrations (currently through `003_evidence_gaps.sql`), and refuses when applied migration versions exceed runtime support.
+- Startup executes `PRAGMA key` immediately, requires a nonempty `PRAGMA cipher_version`, applies versioned migrations (currently through `004_kudos_fields.sql`), and refuses when applied migration versions exceed runtime support.
 - Migration `002` adds `records.metadata_json` for canonical typed metadata and `evidence.connector` for provenance round-trip.
 - Migration `003` adds `records.evidence_gaps`; the production repository round-trips gaps instead of replacing them with an empty tuple.
+- Migration `004` adds `records.record_type`, `records.name`, and `records.month` so evidence-derived kudos fields survive encrypted-store round trips.
 - On POSIX, existing database files with group or world read/write bits fail closed; newly created files are chmod `0600`. Broad existing files are never silently repaired.
 - Keychain, driver, cipher, migration, and permission failures map deterministically to `StoreUnavailable` without echoing key material. Connections are closed on every startup failure.
 
