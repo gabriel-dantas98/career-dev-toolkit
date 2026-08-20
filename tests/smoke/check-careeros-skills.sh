@@ -5,6 +5,15 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 failures=0
 
+if command -v python >/dev/null 2>&1; then
+  python_command="python"
+elif command -v python3 >/dev/null 2>&1; then
+  python_command="python3"
+else
+  printf 'FAIL: Python interpreter is unavailable.\n' >&2
+  exit 1
+fi
+
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   failures=$((failures + 1))
@@ -77,9 +86,13 @@ for skill in "${skills[@]}"; do
 
   command_output="$(
     cd "$repo_root" &&
-      printf '{}\n' | PYTHONPATH=. python -m careeros "$skill" --json 2>/dev/null
+      printf '{}\n' | PYTHONPATH=. "$python_command" -m careeros "$skill" --json 2>/dev/null
   )"
-  if [[ "$command_output" == *'"code": "unknown_command"'* ]] ||
+  if [[ -z "$command_output" ]]; then
+    fail "python -m careeros ${skill} did not emit a JSON envelope"
+  elif [[ "$command_output" != *"\"command\": \"${skill}\""* ]]; then
+    fail "python -m careeros ${skill} emitted the wrong command envelope"
+  elif [[ "$command_output" == *'"code": "unknown_command"'* ]] ||
     [[ "$command_output" == *'"code":"unknown_command"'* ]]; then
     fail "python -m careeros ${skill} is not registered"
   fi

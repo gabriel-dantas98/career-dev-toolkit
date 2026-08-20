@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -7,7 +9,7 @@ from pathlib import Path
 from typing import Protocol
 
 from careeros.outputs import BRAG_DOCUMENT_GID, build_homepage
-from careeros.urls import google_exec_urls_in_text
+from careeros.urls import google_exec_urls_in_text, validate_google_exec_url
 
 
 class DeploymentBlocked(RuntimeError):
@@ -22,6 +24,32 @@ class ClaspAdapter(Protocol):
 
 class DeploymentRegistry(Protocol):
     def register(self, web_app_url: str) -> None: ...
+
+
+class FileDeploymentRegistry:
+    """Registers the verified deployment URL in a private local JSON file."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path.expanduser()
+
+    def register(self, web_app_url: str) -> None:
+        validate_google_exec_url(web_app_url)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(
+            {"webAppUrl": web_app_url},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        descriptor = os.open(
+            self._path,
+            os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+            0o600,
+        )
+        try:
+            os.write(descriptor, payload)
+        finally:
+            os.close(descriptor)
+        if os.name == "posix":
+            os.chmod(self._path, 0o600)
 
 
 @dataclass(frozen=True)
