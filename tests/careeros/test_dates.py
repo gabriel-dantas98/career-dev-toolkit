@@ -51,3 +51,8 @@ def test_sort_start_uses_period_start() -> None:
 def test_sort_start_clamps_open_start_to_reference_year() -> None:
     period = parse_period("–mar", reference_year=2026)
     assert sort_start(period) == "2026-01-01"
+
+
+def test_invalid_calendar_date_rejected() -> None:
+    with pytest.raises(ValueError, match="unsupported period"):
+        parse_period("31/02/2026", reference_year=2026)

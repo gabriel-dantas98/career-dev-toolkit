@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,14 @@ class ValidationIssue:
 
 
 @dataclass(frozen=True)
+class RecordMetadata:
+    jira_key: str | None = None
+    pr_status: str | None = None
+    narrative_status: str | None = None
+    epic_parent: str | None = None
+
+
+@dataclass(frozen=True)
 class DeliveryRecord:
     id: str
     schema_version: int
@@ -52,3 +60,4 @@ class DeliveryRecord:
     evidence_gaps: tuple[str, ...]
     content_fingerprint: str
     observed_at: str
+    metadata: RecordMetadata = field(default_factory=RecordMetadata)

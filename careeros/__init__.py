@@ -4,6 +4,7 @@ from careeros.models import (
     CommandResult,
     DeliveryRecord,
     EvidenceRef,
+    RecordMetadata,
     ValidationIssue,
 )
 
@@ -11,6 +12,7 @@ __all__ = [
     "CommandResult",
     "DeliveryRecord",
     "EvidenceRef",
+    "RecordMetadata",
     "ValidationIssue",
 ]
 

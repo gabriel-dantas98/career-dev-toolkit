@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import datetime
 import re
 from dataclasses import dataclass
 
@@ -60,12 +61,20 @@ def _parse_month_token(token: str) -> int | None:
     return _MONTH_ALIASES.get(cleaned[:3])
 
 
+def _valid_calendar_date(year: int, month: int, day: int) -> bool:
+    try:
+        datetime.date(year, month, day)
+    except ValueError:
+        return False
+    return True
+
+
 def _parse_pt_br_day(value: str) -> tuple[str, str] | None:
     match = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", value.strip())
     if not match:
         return None
     day, month, year = (int(part) for part in match.groups())
-    if not (1 <= day <= 31 and 1 <= month <= 12):
+    if not _valid_calendar_date(year, month, day):
         return None
     iso = _iso_date(year, month, day)
     return iso, iso

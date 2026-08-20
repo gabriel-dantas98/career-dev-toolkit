@@ -41,6 +41,11 @@ def test_classify_context_from_tags() -> None:
     assert classify_context(record) == "community"
 
 
+def test_classify_context_from_title_when_tags_empty() -> None:
+    record = _delivery(title="[Community] Mentoring program", tags=())
+    assert classify_context(record) == "community"
+
+
 def test_normalize_delivery_prefix_adds_missing_prefix() -> None:
     assert normalize_delivery_prefix("Shipped parser", tags=("impact",)) == "[Impact] Shipped parser"
 

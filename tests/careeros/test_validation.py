@@ -1,5 +1,5 @@
 from careeros.dedup import deduplicate
-from careeros.models import EvidenceRef, ValidationIssue
+from careeros.models import DeliveryRecord, EvidenceRef, RecordMetadata, ValidationIssue
 from careeros.validation import validate_records
 
 
@@ -96,6 +96,84 @@ def test_impact_without_evidence_links() -> None:
     }
 
 
+def test_impact_satisfied_by_external_evidence_mapping() -> None:
+    record = synthetic_delivery(
+        title="[Impact] Claim with mapped proof",
+        tags=("impact",),
+        result="Improved latency by 40%",
+        evidence=(),
+    )
+    evidence_map = {
+        "rec-synthetic-001": (
+            EvidenceRef(
+                locator="https://github.test/org/repo/pull/9",
+                excerpt="Synthetic mapped excerpt",
+                observed_at="2026-01-15T00:00:00Z",
+            ),
+        ),
+    }
+    issues = validate_records([record], evidence_map)
+    assert "impact.evidence.missing" not in {issue.rule_id for issue in issues}
+
+
+def test_impact_evidence_inconsistent_with_mapping() -> None:
+    record = synthetic_delivery(
+        evidence=(
+            EvidenceRef(
+                locator="https://github.test/org/repo/pull/a",
+                excerpt="Synthetic PR excerpt",
+                observed_at="2026-01-15T00:00:00Z",
+            ),
+        ),
+    )
+    evidence_map = {
+        "rec-synthetic-001": (
+            EvidenceRef(
+                locator="https://github.test/org/repo/pull/b",
+                excerpt="Synthetic mapped excerpt",
+                observed_at="2026-01-15T00:00:00Z",
+            ),
+        ),
+    }
+    issues = validate_records([record], evidence_map)
+    assert any(issue.rule_id == "impact.evidence.inconsistent" for issue in issues)
+
+
+def test_validate_typed_delivery_record_preserves_metadata() -> None:
+    record = DeliveryRecord(
+        id="rec-typed-001",
+        schema_version=1,
+        source_connector="thread",
+        source_locator="thread:typed-001",
+        title="[Impact] Typed delivery",
+        period="Q1 2026",
+        tags=("impact",),
+        context=None,
+        confidence="complete",
+        situation="Synthetic situation",
+        task="Synthetic task",
+        action="Synthetic action",
+        result="Synthetic result",
+        evidence=(
+            EvidenceRef(
+                locator="https://github.test/org/repo/pull/1",
+                excerpt="Synthetic PR excerpt",
+                observed_at="2026-01-15T00:00:00Z",
+            ),
+        ),
+        evidence_gaps=(),
+        content_fingerprint="fp-typed-001",
+        observed_at="2026-01-15T00:00:00Z",
+        metadata=RecordMetadata(
+            jira_key="SYN-200",
+            pr_status="merged",
+            narrative_status="open",
+        ),
+    )
+    issues = validate_records([record], {})
+    assert any(issue.rule_id == "github.pr.narrative_mismatch" for issue in issues)
+
+
 def test_epic_tree_duplicates() -> None:
     records = [
         synthetic_delivery(record_id="rec-parent", epic_parent="SYN-EPIC-1"),
@@ -137,10 +215,111 @@ def test_deduplicate_preserves_provenance() -> None:
     merged = deduplicate(observations)
     assert len(merged) == 1
     assert set(merged[0]["provenance"]) == {"github", "thread"}
-    assert {merged[0]["source_id"], *merged[0].get("merged_source_ids", ())} >= {
-        "github:pull/1",
-        "thread:msg-9",
+    assert set(merged[0]["merged_source_ids"]) == {"github:pull/1", "thread:msg-9"}
+
+
+def test_deduplicate_transitive_chain() -> None:
+    observations = [
+        {
+            "id": "obs-a",
+            "source_id": "github:pull/1",
+            "jira_key": "SYN-CHAIN",
+            "provenance": ("github",),
+        },
+        {
+            "id": "obs-b",
+            "jira_key": "SYN-CHAIN",
+            "pr_locator": "https://github.test/org/repo/pull/9",
+            "provenance": ("jira",),
+        },
+        {
+            "id": "obs-c",
+            "source_id": "thread:msg-3",
+            "pr_locator": "https://github.test/org/repo/pull/9",
+            "provenance": ("thread",),
+        },
+    ]
+    merged = deduplicate(observations)
+    assert len(merged) == 1
+    assert set(merged[0]["provenance"]) == {"github", "jira", "thread"}
+
+
+def test_deduplicate_order_independent() -> None:
+    pr_locator = "https://github.test/org/repo/pull/77"
+    obs_a = {"id": "obs-1", "jira_key": "SYN-ORDER", "provenance": ("a",)}
+    obs_b = {
+        "id": "obs-2",
+        "jira_key": "SYN-ORDER",
+        "pr_locator": pr_locator,
+        "provenance": ("b",),
     }
+    obs_c = {"id": "obs-3", "pr_locator": pr_locator, "provenance": ("c",)}
+
+    forward_result = deduplicate([obs_a, obs_b, obs_c])
+    reverse_result = deduplicate([obs_c, obs_b, obs_a])
+    assert len(forward_result) == 1
+    assert len(reverse_result) == 1
+    assert set(forward_result[0]["provenance"]) == {"a", "b", "c"}
+    assert set(reverse_result[0]["provenance"]) == {"a", "b", "c"}
+
+
+def test_deduplicate_source_id_priority() -> None:
+    observations = [
+        {
+            "id": "obs-secondary",
+            "jira_key": "SYN-PRIORITY",
+            "provenance": ("jira",),
+        },
+        {
+            "id": "obs-primary",
+            "source_id": "github:pull/99",
+            "jira_key": "SYN-PRIORITY",
+            "provenance": ("github",),
+        },
+    ]
+    merged = deduplicate(observations)
+    assert len(merged) == 1
+    assert merged[0]["source_id"] == "github:pull/99"
+
+
+def test_deduplicate_evidence_only_key() -> None:
+    observations = [
+        {
+            "id": "obs-1",
+            "source_id": "thread:msg-1",
+            "evidence_locator": "https://docs.test/evidence/shared",
+            "provenance": ("thread",),
+        },
+        {
+            "id": "obs-2",
+            "source_id": "github:issue/5",
+            "evidence_locator": "https://docs.test/evidence/shared",
+            "provenance": ("github",),
+        },
+    ]
+    merged = deduplicate(observations)
+    assert len(merged) == 1
+    assert set(merged[0]["merged_source_ids"]) == {"thread:msg-1", "github:issue/5"}
+
+
+def test_deduplicate_normalized_pr_url() -> None:
+    observations = [
+        {
+            "id": "obs-1",
+            "source_id": "github:pull/1",
+            "pr_locator": "https://github.test/org/repo/pull/1/",
+            "provenance": ("github",),
+        },
+        {
+            "id": "obs-2",
+            "source_id": "thread:msg-2",
+            "pr_locator": "https://github.test/org/repo/pull/1",
+            "provenance": ("thread",),
+        },
+    ]
+    merged = deduplicate(observations)
+    assert len(merged) == 1
+    assert set(merged[0]["provenance"]) == {"github", "thread"}
 
 
 def test_validation_issue_has_rule_id_not_bool() -> None:

@@ -2,15 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from careeros.models import DeliveryRecord, EvidenceRef, ValidationIssue
-from careeros.taxonomy import apply_confidence_cap, normalize_delivery_prefix
-
-_TAG_PREFIXES: dict[str, str] = {
-    "impact": "[Impact]",
-    "community": "[Community]",
-    "delivery": "[Delivery]",
-    "kudos": "[Kudos]",
-}
+from careeros.models import DeliveryRecord, EvidenceRef, RecordMetadata, ValidationIssue
+from careeros.taxonomy import apply_confidence_cap, prefix_for_tag
 
 
 def _issue(
@@ -28,35 +21,51 @@ def _issue(
     )
 
 
-def _as_delivery_record(record: Mapping[str, object]) -> DeliveryRecord | None:
-    if record.get("record_type") != "delivery":
-        return None
-    evidence = record.get("evidence", ())
-    if not isinstance(evidence, Sequence) or isinstance(evidence, (str, bytes)):
-        evidence = ()
-    normalized_evidence: list[EvidenceRef] = []
-    for item in evidence:
+def _normalize_evidence_items(value: object) -> tuple[EvidenceRef, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    refs: list[EvidenceRef] = []
+    for item in value:
         if isinstance(item, EvidenceRef):
-            normalized_evidence.append(item)
-    return DeliveryRecord(
-        id=str(record.get("id", "")),
-        schema_version=1,
-        source_connector="validation",
-        source_locator=str(record.get("id", "")),
-        title=str(record.get("title", "")),
-        period=None,
-        tags=tuple(record.get("tags", ())),
-        context=None,
-        confidence=str(record.get("confidence")) if record.get("confidence") is not None else None,
-        situation=None,
-        task=None,
-        action=None,
-        result=str(record.get("result", "")),
-        evidence=tuple(normalized_evidence),
-        evidence_gaps=(),
-        content_fingerprint=str(record.get("id", "")),
-        observed_at="1970-01-01T00:00:00Z",
-    )
+            refs.append(item)
+    return tuple(refs)
+
+
+def _record_view(record: Mapping[str, object] | DeliveryRecord) -> Mapping[str, object]:
+    if isinstance(record, DeliveryRecord):
+        metadata = record.metadata
+        return {
+            "record_type": "delivery",
+            "id": record.id,
+            "title": record.title,
+            "tags": record.tags,
+            "confidence": record.confidence,
+            "result": record.result or "",
+            "evidence": record.evidence,
+            "jira_key": metadata.jira_key,
+            "pr_status": metadata.pr_status,
+            "narrative_status": metadata.narrative_status,
+            "epic_parent": metadata.epic_parent,
+        }
+    return record
+
+
+def _evidence_locators(
+    record: Mapping[str, object],
+    evidence: Mapping[str, object],
+) -> set[str]:
+    locators: set[str] = set()
+    for item in _normalize_evidence_items(record.get("evidence", ())):
+        if item.locator.strip():
+            locators.add(item.locator.strip())
+
+    record_id = str(record.get("id", ""))
+    mapped = evidence.get(record_id)
+    for item in _normalize_evidence_items(mapped):
+        if item.locator.strip():
+            locators.add(item.locator.strip())
+
+    return locators
 
 
 def _validate_kudos(record: Mapping[str, object]) -> list[ValidationIssue]:
@@ -95,7 +104,10 @@ def _title_prefix(title: str) -> str | None:
     return title[: closing + 1]
 
 
-def _validate_delivery(record: Mapping[str, object]) -> list[ValidationIssue]:
+def _validate_delivery(
+    record: Mapping[str, object],
+    evidence: Mapping[str, object],
+) -> list[ValidationIssue]:
     if record.get("record_type") != "delivery":
         return []
     issues: list[ValidationIssue] = []
@@ -114,8 +126,8 @@ def _validate_delivery(record: Mapping[str, object]) -> list[ValidationIssue]:
             )
         )
     elif normalized_tags:
-        expected_prefix = _TAG_PREFIXES.get(normalized_tags[0])
-        if expected_prefix and prefix != expected_prefix:
+        expected_prefix = prefix_for_tag(normalized_tags[0])
+        if prefix != expected_prefix:
             issues.append(
                 _issue(
                     "title.tags.mismatch",
@@ -125,7 +137,41 @@ def _validate_delivery(record: Mapping[str, object]) -> list[ValidationIssue]:
                 )
             )
 
-    delivery_record = _as_delivery_record(record)
+    delivery_record = None
+    if isinstance(record, DeliveryRecord):
+        delivery_record = record
+    elif record.get("record_type") == "delivery":
+        metadata = RecordMetadata(
+            jira_key=record.get("jira_key") if isinstance(record.get("jira_key"), str) else None,
+            pr_status=record.get("pr_status") if isinstance(record.get("pr_status"), str) else None,
+            narrative_status=(
+                record.get("narrative_status")
+                if isinstance(record.get("narrative_status"), str)
+                else None
+            ),
+            epic_parent=record.get("epic_parent") if isinstance(record.get("epic_parent"), str) else None,
+        )
+        delivery_record = DeliveryRecord(
+            id=str(record.get("id", "")),
+            schema_version=1,
+            source_connector="validation",
+            source_locator=str(record.get("id", "")),
+            title=title,
+            period=None,
+            tags=normalized_tags,
+            context=None,
+            confidence=str(record.get("confidence")) if record.get("confidence") is not None else None,
+            situation=None,
+            task=None,
+            action=None,
+            result=str(record.get("result", "")),
+            evidence=_normalize_evidence_items(record.get("evidence", ())),
+            evidence_gaps=(),
+            content_fingerprint=str(record.get("id", "")),
+            observed_at="1970-01-01T00:00:00Z",
+            metadata=metadata,
+        )
+
     if delivery_record is not None:
         capped = apply_confidence_cap(delivery_record)
         if delivery_record.confidence == "complete" and capped != "complete":
@@ -139,19 +185,33 @@ def _validate_delivery(record: Mapping[str, object]) -> list[ValidationIssue]:
             )
 
     result = str(record.get("result", ""))
-    evidence = record.get("evidence", ())
-    has_links = False
-    if isinstance(evidence, Sequence) and not isinstance(evidence, (str, bytes)):
-        for item in evidence:
-            if isinstance(item, EvidenceRef) and item.locator.strip():
-                has_links = True
-                break
-    if "impact" in normalized_tags and result.strip() and not has_links:
+    locators = _evidence_locators(record, evidence)
+    if "impact" in normalized_tags and result.strip() and not locators:
         issues.append(
             _issue(
                 "impact.evidence.missing",
                 severity="error",
                 message="Impact claims require linked evidence.",
+                field="evidence",
+            )
+        )
+
+    record_locators = {
+        item.locator.strip()
+        for item in _normalize_evidence_items(record.get("evidence", ()))
+        if item.locator.strip()
+    }
+    mapped_locators = {
+        item.locator.strip()
+        for item in _normalize_evidence_items(evidence.get(str(record.get("id", ""))))
+        if item.locator.strip()
+    }
+    if record_locators and mapped_locators and not record_locators.intersection(mapped_locators):
+        issues.append(
+            _issue(
+                "impact.evidence.inconsistent",
+                severity="error",
+                message="Record evidence locators do not match the evidence mapping.",
                 field="evidence",
             )
         )
@@ -221,27 +281,11 @@ def validate_records(
     records: Sequence[Mapping[str, object] | DeliveryRecord],
     evidence: Mapping[str, object],
 ) -> list[ValidationIssue]:
-    del evidence
-    normalized_records: list[Mapping[str, object]] = []
-    for record in records:
-        if isinstance(record, DeliveryRecord):
-            normalized_records.append(
-                {
-                    "record_type": "delivery",
-                    "id": record.id,
-                    "title": record.title,
-                    "tags": record.tags,
-                    "confidence": record.confidence,
-                    "result": record.result or "",
-                    "evidence": record.evidence,
-                }
-            )
-        else:
-            normalized_records.append(record)
+    normalized_records = [_record_view(record) for record in records]
 
     issues: list[ValidationIssue] = []
     for record in normalized_records:
         issues.extend(_validate_kudos(record))
-        issues.extend(_validate_delivery(record))
+        issues.extend(_validate_delivery(record, evidence))
     issues.extend(_validate_cross_record(normalized_records))
     return issues
