@@ -1,0 +1,53 @@
+# CareerOS Google Apps Script Gateway
+
+## Goal
+
+Provide one user-deployed Apps Script web app for bounded CareerOS Google reads and consent-authorized brag-sheet projection. Every request and response follows the same narrow protocol used by the Python browser client, and every sheet write is followed by an explicit read-back action.
+
+## Non-goals
+
+- Expose arbitrary Apps Script methods, generic dispatch, `eval`, batch operations, formulas, formatting, deletion, or unrestricted ranges.
+- Treat Google Sheets as the canonical store or infer missing career evidence.
+- Persist credentials, accept bearer tokens in payloads, or depend on Tapioca at runtime.
+- Claim live Google compatibility from the local fixture or Node tests.
+- Implement timeline deployment or homepage actions before their downstream contracts are designed.
+
+## Inputs
+
+- JSON POST requests with `action`, `requestId`, Unix-seconds `timestamp`, and a single-use `nonce`.
+- Explicit Google resource IDs, bounded time windows, bounded result counts, and bounded A1 ranges required by the selected action.
+- `sheets.writeBragsheet` rows whose canonical values were serialized by CareerOS and whose `inputMode` is exactly `RAW`.
+- Browser-mode calls made through a persistent authenticated browser transport, with bounded retries only for transient Google interstitials.
+
+## Outputs
+
+- An envelope `{ok, requestId, data, errors, version}` for every success and failure.
+- Minimal Calendar, Gmail, Drive, Docs, and Sheets fields for the fixed actions `health`, `calendar.search`, `gmail.search`, `drive.search`, `docs.read`, `sheets.read`, `sheets.writeBragsheet`, and `sheets.readBack`.
+- Brag-sheet writes restricted to an explicit spreadsheet ID, sheet name, start row, fixed projection width, finite row count, and `RAW` values.
+- Exact read-back values over the same bounded projection range.
+
+## Security and bounds
+
+- Reject unknown actions before provider access. Dispatch is a closed switch; there is no property-based method lookup or arbitrary evaluation.
+- Require timestamps within five minutes of server time and nonces matching a conservative identifier pattern. `CacheService` stores each accepted nonce before dispatch and rejects replay.
+- Cap search windows at 366 days, search results at 50, Docs text at 8,000 characters, sheet reads at 500 cells, brag-sheet writes at 200 rows by 12 columns, and request bodies at 256 KiB.
+- Require explicit resource IDs and sheet names. Parse A1 notation locally before calling Sheets, and reject open-ended, whole-row, whole-column, multi-area, or oversized ranges.
+- Return stable error codes and redacted messages. Never echo request bodies, authorization canaries, source queries, nonce values, or provider exception text.
+
+## Sync contract
+
+- Python creates an immutable projection preview before external access.
+- Destination consent for `write:bragsheet` is rechecked immediately before `sheets.writeBragsheet`.
+- The write request always carries `inputMode: "RAW"`; ambiguous slash dates with both day and month at most 12 are prefixed with an apostrophe before they reach Google.
+- Python calls `sheets.readBack` after a successful write and compares the returned matrix exactly with the canonical intended matrix.
+- A mismatch or unverifiable response records the sync run as `reconciliation_required`; only an exact match records `synced`.
+- Projection-time evidence gaps are retained in the encrypted canonical store. Migration `003` adds deterministic `evidence_gaps` persistence and sync reconciliation details for stores created by earlier tasks.
+
+## Voice/Tone
+
+Errors are direct, calm, and actionable. They identify a stable rule or action without reproducing private source content, credentials, queries, or provider exception details.
+
+## Open questions
+
+- Live Apps Script OAuth scopes, deployment, and authenticated browser behavior require separate manual certification with a user-authorized Google account.
+- Deployment and homepage actions remain intentionally absent until Task 6 defines their exact inputs, limits, consent, and response fields.

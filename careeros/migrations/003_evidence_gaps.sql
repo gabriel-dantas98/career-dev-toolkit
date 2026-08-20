@@ -1,0 +1,1 @@
+ALTER TABLE records ADD COLUMN evidence_gaps TEXT NOT NULL DEFAULT '[]';

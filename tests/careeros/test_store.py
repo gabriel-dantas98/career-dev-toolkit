@@ -38,7 +38,7 @@ def test_store_opens_with_sqlcipher_and_applies_migrations(fake_keyring, tmp_pat
         applied = store.connection().execute(
             "SELECT version FROM migrations ORDER BY version"
         ).fetchall()
-        assert applied == [(1,), (2,)]
+        assert applied == [(1,), (2,), (3,)]
     finally:
         store.close()
 
@@ -74,7 +74,7 @@ def test_store_refuses_migration_version_ahead_of_runtime(fake_keyring, tmp_path
     store = open_encrypted_store(config, fake_keyring)
     store.connection().execute(
         "INSERT INTO migrations (version, applied_at) VALUES (?, ?)",
-        (3, "2026-01-01T00:00:00+00:00"),
+        (4, "2026-01-01T00:00:00+00:00"),
     )
     store.connection().commit()
     store.close()

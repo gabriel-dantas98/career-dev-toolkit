@@ -2,7 +2,7 @@
 
 ## Goal
 
-Provide a shared, deterministic Python runtime that exposes one CLI entry point (`python -m careeros`) and typed domain contracts consumed by portable skills and later pipeline stages. Task 2 adds fail-closed privacy scanning, SQLCipher-backed encrypted persistence, versioned migrations, and scoped revocable consent. Task 3 adds Brazilian date parsing, taxonomy classification, deterministic deduplication, and integrity validators.
+Provide a shared, deterministic Python runtime that exposes one CLI entry point (`python -m careeros`) and typed domain contracts consumed by portable skills and later pipeline stages. Task 2 adds fail-closed privacy scanning, SQLCipher-backed encrypted persistence, versioned migrations, and scoped revocable consent. Task 3 adds Brazilian date parsing, taxonomy classification, deterministic deduplication, and integrity validators. Task 5 adds fixed-schema brag-sheet projection, browser-mode gateway calls, consent-adjacent RAW writes, and exact read-back reconciliation.
 
 ## Non-goals
 
@@ -24,6 +24,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - Observations with namespaced `source_id`, Jira/PR/evidence keys, and provenance tuples.
 - Bounded `CollectRequest` payloads for thread excerpts, GitHub `gh api` queries, and Google gateway actions.
 - `HarvestRequest` observation batches normalized, deduplicated, validated, and persisted transactionally.
+- Delivery records projected to an explicit sheet ID, sheet name, start row, and fixed 12-column brag-sheet schema.
+- Apps Script web-app URLs ending in `/exec`, invoked by JSON POST through a persistent browser profile.
 
 ## Outputs
 
@@ -34,6 +36,8 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - `ConsentService` grant, require, and revoke operations with destination, connector, and background isolation.
 - `Connector.collect(request) -> tuple[Observation, ...]` from thread, GitHub, and Google adapters.
 - `HarvestService.run(request) -> HarvestResult` with merged records, validation issues, and persist status.
+- `serialize_period(value)`, immutable `BragSheetProjection` previews, and `SyncService.write_and_verify()`.
+- Gateway envelopes with exactly `ok`, `requestId`, `data`, `errors`, and `version`.
 - `StoreUnavailable` and `ConsentDenied` terminal errors that identify the failed rule without leaking keys or sensitive input.
 
 ## Privacy contract
@@ -45,8 +49,9 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 
 - Production connects exclusively through `sqlcipher3` via the `sqlcipher_driver` import boundary; stdlib `sqlite3` is test-only to prove refusal.
 - A 256-bit key is generated locally, stored in the OS keychain under `careeros` / `db-key:<resolved-path>`, and validated as 64 lowercase hex characters before `PRAGMA key` interpolation (parameter binding is unsupported by the driver).
-- Startup executes `PRAGMA key` immediately, requires a nonempty `PRAGMA cipher_version`, applies versioned migrations (currently through `002_record_metadata.sql`), and refuses when applied migration versions exceed runtime support.
+- Startup executes `PRAGMA key` immediately, requires a nonempty `PRAGMA cipher_version`, applies versioned migrations (currently through `003_evidence_gaps.sql`), and refuses when applied migration versions exceed runtime support.
 - Migration `002` adds `records.metadata_json` for canonical typed metadata and `evidence.connector` for provenance round-trip.
+- Migration `003` adds `records.evidence_gaps`; the production repository round-trips gaps instead of replacing them with an empty tuple.
 - On POSIX, existing database files with group or world read/write bits fail closed; newly created files are chmod `0600`. Broad existing files are never silently repaired.
 - Keychain, driver, cipher, migration, and permission failures map deterministically to `StoreUnavailable` without echoing key material. Connections are closed on every startup failure.
 
@@ -108,6 +113,16 @@ Provide a shared, deterministic Python runtime that exposes one CLI entry point 
 - `evidence.connector` is persisted alongside locator, excerpt, and observed-at for read-back.
 - Persistence failures return `HarvestResult.persistence_error` with `harvest.persistence.failed`; nothing is left partially persisted after rollback.
 - `MemoryStore` remains test-only.
+
+## Projection and sync contract
+
+- The brag-sheet projection has at most 200 rows and exactly 12 fixed columns; destination IDs are canonical `sheet:{id}` values and sheet names/start rows are explicit.
+- Every projected value is written in one `RAW` operation. Slash periods whose first and second components are both at most 12 receive a leading apostrophe before projection.
+- `SyncService.preview()` performs no external call. `ConsentService.require("destination", destination_id, "write:bragsheet")` runs immediately before `sheets.writeBragsheet`.
+- A successful write is followed by `sheets.readBack` over the same start row and dimensions. Matrix shape, value, and Python value type must match exactly.
+- Any exception or mismatch after the write call records `reconciliation_required`; only exact read-back records `synced`.
+- The browser client adds a bounded request ID, timestamp, and nonce; posts JSON through an authenticated persistent Playwright profile; retries only transient interstitial/status responses at most five times; and accepts only the exact gateway envelope.
+- Playwright is an optional `browser` install extra. The local synthetic transport and HTTP fixture do not require Google credentials and do not certify live OAuth behavior.
 
 ## Voice/Tone
 

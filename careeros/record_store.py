@@ -61,7 +61,8 @@ class EncryptedRecordStore:
                 result,
                 content_fingerprint,
                 observed_at,
-                metadata_json
+                metadata_json,
+                evidence_gaps
             FROM records
             WHERE id = ?
             """,
@@ -106,7 +107,7 @@ class EncryptedRecordStore:
                 )
                 for item in evidence_rows
             ),
-            evidence_gaps=(),
+            evidence_gaps=tuple(str(gap) for gap in json.loads(row[16] or "[]")),
             metadata=deserialize_metadata(row[15]),
         )
 
@@ -136,8 +137,9 @@ class EncryptedRecordStore:
                         content_fingerprint,
                         observed_at,
                         created_at,
-                        metadata_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        metadata_json,
+                        evidence_gaps
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.id,
@@ -157,6 +159,7 @@ class EncryptedRecordStore:
                         record.observed_at,
                         now,
                         serialize_metadata(metadata),
+                        json.dumps(list(record.evidence_gaps), separators=(",", ":")),
                     ),
                 )
                 for evidence in record.evidence:
